@@ -6,12 +6,9 @@
 	/** @type {{ children: import('svelte').Snippet }} */
 	let { children } = $props();
 
-	// The demo reads options from the URL so the e2e tests can exercise every flag,
-	// e.g. /?events=click,input&dedupe=false&timeout=500
-	const params = page.url.searchParams;
-	const events = params.get('events')?.split(',') ?? ['click'];
-	const dedupe = params.get('dedupe') !== 'false';
-	const timeout = Number(params.get('timeout') ?? 10000);
+	// These pages are the fixtures of the e2e tests. They are prerendered, so each one fixes its
+	// options in its `load` function (see e.g. no-dedupe/+page.js) instead of reading them from the URL
+	const { events, dedupe, timeout } = page.data.replay ?? {};
 
 	/** @type {Event[] | null} */
 	let replayed = $state(null);
@@ -21,6 +18,11 @@
 		if (type === 'enter') setTimeout(() => (document.documentElement.dataset.hydrated = ''));
 	});
 </script>
+
+<svelte:head>
+	<title>e2e fixture</title>
+	<meta name="robots" content="noindex" />
+</svelte:head>
 
 <EventReplay {events} {dedupe} {timeout} onreplay={(events) => (replayed = events)} />
 

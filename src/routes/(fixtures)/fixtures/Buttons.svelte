@@ -52,7 +52,7 @@
 
 	<p>
 		<label>
-			<code>oninput</code> (with <code>?events=click,input</code>)
+			<code>oninput</code> (with <code>events=&#123;['click', 'input']&#125;</code>)
 			<input id="text" oninput={(event) => (typed = event.currentTarget.value)} />
 		</label>
 		<output id="text-value">{typed}</output>
@@ -76,5 +76,9 @@
 		<output id="check-state">{checked}</output>
 	</p>
 
-	<p><a id="other" href={resolve('/other')}>A link (the browser already followed it)</a></p>
+	<p>
+		<a id="other" href={resolve('/(fixtures)/fixtures/other')}
+			>A link (the browser already followed it)</a
+		>
+	</p>
 </section>

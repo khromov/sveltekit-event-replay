@@ -4,7 +4,10 @@ declare global {
 	namespace App {
 		// interface Error {}
 		// interface Locals {}
-		// interface PageData {}
+		interface PageData {
+			/** `<EventReplay>` options of an e2e fixture page, see `src/routes/(fixtures)` */
+			replay?: Partial<import('./lib/types.js').CaptureConfig>;
+		}
 		// interface PageState {}
 		// interface Platform {}
 	}

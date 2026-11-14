@@ -1,5 +1,6 @@
+import process from 'node:process';
 import { defineConfig } from 'vitest/config';
-import adapter from '@sveltejs/adapter-node';
+import adapter from '@sveltejs/adapter-static';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { SCRIPT_HASH } from './src/lib/generated/script.js';
 
@@ -12,7 +13,14 @@ export default defineConfig({
 					filename.split(/[/\\]/).includes('node_modules') ? undefined : true
 			},
 			adapter: adapter(),
-			// The demo app runs with a strict CSP to prove that SCRIPT_HASH is all you need
+			paths: {
+				// GitHub Pages serves the website from /sveltekit-event-replay, which the deploy workflow
+				// passes in as BASE_PATH
+				base: process.argv.includes('dev')
+					? ''
+					: /** @type {`/${string}` | undefined} */ (process.env.BASE_PATH)
+			},
+			// The website runs with a strict CSP to prove that SCRIPT_HASH is all you need
 			csp: {
 				directives: { 'script-src': ['self', SCRIPT_HASH] }
 			}

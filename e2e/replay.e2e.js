@@ -45,12 +45,12 @@ test.beforeEach(({ page }) => {
 });
 
 test.afterEach(() => {
-	// also catches the inline script being blocked by the demo app's Content Security Policy
+	// also catches the inline script being blocked by the Content Security Policy
 	expect(errors).toEqual([]);
 });
 
 test('replays a click on a delegated onclick handler', async ({ page }) => {
-	await goto_slow(page, '/');
+	await goto_slow(page, '/fixtures/default');
 	await page.click('#delegated');
 	await replayed(page);
 	await expect(page.locator('#delegated-count')).toHaveText('1');
@@ -58,7 +58,7 @@ test('replays a click on a delegated onclick handler', async ({ page }) => {
 });
 
 test('replays repeated clicks on the same element once', async ({ page }) => {
-	await goto_slow(page, '/');
+	await goto_slow(page, '/fixtures/default');
 	await page.click('#delegated');
 	await page.click('#delegated');
 	await page.click('#delegated');
@@ -67,7 +67,7 @@ test('replays repeated clicks on the same element once', async ({ page }) => {
 });
 
 test('replays every click with dedupe=false', async ({ page }) => {
-	await goto_slow(page, '/?dedupe=false');
+	await goto_slow(page, '/fixtures/no-dedupe');
 	await page.click('#delegated');
 	await page.click('#delegated');
 	await page.click('#delegated');
@@ -76,7 +76,7 @@ test('replays every click with dedupe=false', async ({ page }) => {
 });
 
 test('replays clicks on different elements in order', async ({ page }) => {
-	await goto_slow(page, '/');
+	await goto_slow(page, '/fixtures/default');
 	await page.click('#delegated');
 	await page.click('#listener');
 	await replayed(page);
@@ -85,7 +85,7 @@ test('replays clicks on different elements in order', async ({ page }) => {
 });
 
 test('a click on a child element reaches the handler on its button', async ({ page }) => {
-	await goto_slow(page, '/');
+	await goto_slow(page, '/fixtures/default');
 	await page.click('#nested-icon');
 	await page.click('#nested'); // same button, so deduped
 	await replayed(page);
@@ -93,14 +93,14 @@ test('a click on a child element reaches the handler on its button', async ({ pa
 });
 
 test('replays to listeners added with addEventListener in onMount', async ({ page }) => {
-	await goto_slow(page, '/');
+	await goto_slow(page, '/fixtures/default');
 	await page.click('#listener');
 	await replayed(page);
 	await expect(page.locator('#listener-count')).toHaveText('1');
 });
 
 test('marks elements as pending until the replay', async ({ page }) => {
-	await goto_slow(page, '/');
+	await goto_slow(page, '/fixtures/default');
 	await expect(page.locator('#delegated')).not.toHaveAttribute('data-replay-pending');
 	await page.click('#delegated');
 	await expect(page.locator('#delegated')).toHaveAttribute('data-replay-pending', '');
@@ -109,7 +109,7 @@ test('marks elements as pending until the replay', async ({ page }) => {
 });
 
 test('does not capture elements marked data-no-replay', async ({ page }) => {
-	await goto_slow(page, '/');
+	await goto_slow(page, '/fixtures/default');
 	await page.click('#ignored');
 	await expect(page.locator('#ignored')).not.toHaveAttribute('data-replay-pending');
 	await replayed(page);
@@ -118,7 +118,7 @@ test('does not capture elements marked data-no-replay', async ({ page }) => {
 });
 
 test('leaves native checkboxes alone, so they toggle exactly once', async ({ page }) => {
-	await goto_slow(page, '/');
+	await goto_slow(page, '/fixtures/default');
 	await page.click('#check');
 	await replayed(page);
 	await expect(page.locator('#check')).toBeChecked();
@@ -126,9 +126,9 @@ test('leaves native checkboxes alone, so they toggle exactly once', async ({ pag
 });
 
 test('leaves links alone, so the browser follows them natively', async ({ page }) => {
-	await goto_slow(page, '/');
+	await goto_slow(page, '/fixtures/default');
 	await page.click('#other');
-	await expect(page).toHaveURL('/other');
+	await expect(page).toHaveURL('/fixtures/other');
 	await expect(page.locator('h1')).toHaveText('Another page');
 
 	// Leaving the page mid-load aborts SvelteKit's own (delayed) boot import(), which Firefox and
@@ -139,7 +139,7 @@ test('leaves links alone, so the browser follows them natively', async ({ page }
 });
 
 test('does not capture input events by default', async ({ page }) => {
-	await goto_slow(page, '/');
+	await goto_slow(page, '/fixtures/default');
 	await page.fill('#text', 'hello');
 	await replayed(page);
 	await expect(page.locator('#text')).toHaveValue('hello');
@@ -147,7 +147,7 @@ test('does not capture input events by default', async ({ page }) => {
 });
 
 test('replays input events with events=click,input', async ({ page }) => {
-	await goto_slow(page, '/?events=click,input');
+	await goto_slow(page, '/fixtures/input');
 	await page.click('#delegated');
 	await page.locator('#text').pressSequentially('hello');
 	await replayed(page);
@@ -156,7 +156,7 @@ test('replays input events with events=click,input', async ({ page }) => {
 });
 
 test('handles clicks after hydration normally, without double counting', async ({ page }) => {
-	await goto_slow(page, '/');
+	await goto_slow(page, '/fixtures/default');
 	await page.click('#delegated');
 	await replayed(page);
 	await page.click('#delegated');
@@ -166,7 +166,7 @@ test('handles clicks after hydration normally, without double counting', async (
 });
 
 test('does nothing on client-side navigations', async ({ page }) => {
-	await goto_slow(page, '/');
+	await goto_slow(page, '/fixtures/default');
 	await replayed(page);
 	await page.click('#other');
 	await expect(page.locator('h1')).toHaveText('Another page');
@@ -177,7 +177,7 @@ test('does nothing on client-side navigations', async ({ page }) => {
 });
 
 test('without JavaScript, drops captured events after the timeout', async ({ page }) => {
-	await page.goto('/no-js?timeout=500');
+	await page.goto('/fixtures/no-js');
 	await page.click('#button');
 	await expect(page.locator('#button')).toHaveAttribute('data-replay-pending', '');
 	await expect(page.locator('#button')).not.toHaveAttribute('data-replay-pending', {

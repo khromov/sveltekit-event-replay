@@ -2,7 +2,9 @@
 
 SvelteKit renders your pages on the server, so they show up before the JavaScript that makes them interactive has loaded. A click on a `<button onclick={...}>` in that window does nothing, and the user has to click again.
 
-`sveltekit-event-replay` adds a tiny inline script (~560 bytes gzipped) to `<head>` that remembers those clicks, and replays them once SvelteKit has hydrated the page.
+`sveltekit-event-replay` adds a tiny inline script (~660 bytes gzipped) to `<head>` that remembers those clicks, and replays them once SvelteKit has hydrated the page.
+
+Try the demo at [khromov.github.io/sveltekit-event-replay](https://khromov.github.io/sveltekit-event-replay/).
 
 ## Install
 
@@ -117,13 +119,13 @@ Angular's `@angular/core/primitives/event-dispatch` (JSAction) and Qwik's `qwikl
 
 ```sh
 npm install
-npm run dev        # demo app — throttle the network in devtools and click around while it loads
+npm run dev        # the website, and the e2e fixtures at /fixtures/default
 npm test           # unit tests (vitest + jsdom) and e2e tests (Playwright: Chromium, Firefox, WebKit)
 npm run lint
 npm run check
 ```
 
-The inline script's source is [`src/script/capture.js`](src/script/capture.js). `npm run generate` minifies it into `src/lib/generated/script.js` and computes its CSP hash; a unit test fails if the generated file is out of date. The e2e tests hold back SvelteKit's client JavaScript to simulate a slow network and click around before the page hydrates. The demo app runs with a strict CSP, so they also verify `SCRIPT_HASH`.
+The inline script's source is [`src/script/capture.js`](src/script/capture.js). `npm run generate` minifies it into `src/lib/generated/script.js` and computes its CSP hash; a unit test fails if the generated file is out of date. The e2e tests hold back SvelteKit's client JavaScript to simulate a slow network and click around before the page hydrates. Their pages live in `src/routes/(fixtures)`, next to the [website](https://khromov.github.io/sveltekit-event-replay/) in `src/routes/(site)`. Both are prerendered with a strict CSP, so the tests also verify `SCRIPT_HASH`.
 
 ## License
 
