@@ -1,19 +1,26 @@
-import { JSDOM } from 'jsdom';
-import { describe, expect, test } from 'vitest';
+import { JSDOM, VirtualConsole } from 'jsdom';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { SCRIPT } from '../lib/generated/script.js';
-import { dispatch } from '../lib/replay.js';
+import { dispatch, replay } from '../lib/replay.js';
 
 /**
  * Renders `body` with the capture script in <head>, the way `<EventReplay>` does.
  *
  * @param {string} body
- * @param {Record<string, unknown>} [config]
+ * @param {unknown} [config]
+ * @param {string} [raw] a raw (already escaped) `data-config` attribute value
  */
-function setup(body, config = {}) {
-	const attr = JSON.stringify(config).replaceAll('&', '&amp;').replaceAll('"', '&quot;');
+function setup(body, config = {}, raw) {
+	const attr = raw ?? JSON.stringify(config).replaceAll('&', '&amp;').replaceAll('"', '&quot;');
+
+	/** @type {string[]} uncaught errors thrown inside the page */
+	const errors = [];
+	const virtualConsole = new VirtualConsole();
+	virtualConsole.on('jsdomError', (error) => errors.push(String(error.cause ?? error)));
+
 	const dom = new JSDOM(
 		`<!doctype html><html><head><script data-config="${attr}">${SCRIPT}</script></head><body>${body}</body></html>`,
-		{ runScripts: 'dangerously' }
+		{ runScripts: 'dangerously', virtualConsole }
 	);
 	const { window } = dom;
 
@@ -28,8 +35,18 @@ function setup(body, config = {}) {
 		return api.stop().map(({ event, key }) => ({ type: event.type, key: key.id || key.tagName }));
 	};
 
-	return { window, document: window.document, click, stop };
+	const take = () => {
+		const api = /** @type {import('../lib/types.js').CaptureApi} */ (
+			window.__sveltekit_event_replay
+		);
+		return { captured: api.stop(), pending: api.pending };
+	};
+
+	return { window, document: window.document, click, stop, take, errors };
 }
+
+/** @param {number} ms */
+const sleep = (ms) => new Promise((fulfil) => setTimeout(fulfil, ms));
 
 describe('capture', () => {
 	test('captures a click on a button and marks it as pending', () => {
@@ -124,9 +141,9 @@ describe('capture', () => {
 	});
 
 	test('supports a custom pending attribute, or none at all', () => {
-		const custom = setup('<button id="a">a</button>', { pending: 'aria-busy' });
+		const custom = setup('<button id="a">a</button>', { pending: 'data-loading' });
 		custom.click('#a');
-		expect(custom.document.querySelector('#a')?.getAttribute('aria-busy')).toBe('');
+		expect(custom.document.querySelector('#a')?.getAttribute('data-loading')).toBe('');
 
 		const none = setup('<button id="a">a</button>', { pending: false });
 		none.click('#a');
@@ -165,6 +182,65 @@ describe('capture', () => {
 		expect(document.querySelector('#a')?.hasAttribute('data-replay-pending')).toBe(false);
 		click('#a');
 		expect(stop()).toEqual([]);
+	});
+
+	test('stops capturing after the timeout without pending markers too', async () => {
+		const { click, stop } = setup('<button id="a">a</button>', { pending: false, timeout: 20 });
+		await sleep(60);
+		click('#a');
+		expect(stop()).toEqual([]);
+	});
+
+	test.each([
+		['larger than setTimeout supports', 2 ** 31],
+		['MAX_SAFE_INTEGER', Number.MAX_SAFE_INTEGER],
+		['negative (waits forever)', -1],
+		['zero (waits forever)', 0],
+		['Infinity, which JSON turns into null (waits forever)', Infinity]
+	])('keeps capturing with a timeout that is %s', async (_, timeout) => {
+		const { click, stop } = setup('<button id="a">a</button>', { timeout });
+		await sleep(20);
+		click('#a');
+		expect(stop()).toHaveLength(1);
+	});
+
+	test('falls back to the default ignore selector when it is invalid', () => {
+		const { click, stop, errors } = setup(
+			'<button id="a">a</button><button id="b" data-no-replay>b</button>',
+			{ ignore: 'button[' }
+		);
+		click('#a');
+		click('#b');
+		expect(errors).toEqual([]);
+		expect(stop()).toEqual([{ type: 'click', key: 'a' }]);
+	});
+
+	test('falls back to the default pending attribute when the name is invalid', () => {
+		const { document, click, stop, errors } = setup('<button id="a">a</button>', {
+			pending: 'data replay'
+		});
+		click('#a');
+		expect(errors).toEqual([]);
+		expect(document.querySelector('#a')?.hasAttribute('data-replay-pending')).toBe(true);
+		expect(stop()).toHaveLength(1);
+	});
+
+	test.each([
+		['events: null', { events: null }, undefined],
+		['events: "click"', { events: 'click' }, undefined],
+		['a null config', undefined, 'null'],
+		['a numeric config', undefined, '42']
+	])('falls back to the defaults for %s', (_, config, raw) => {
+		const { click, stop, errors } = setup('<button id="a">a</button>', config, raw);
+		click('#a');
+		expect(errors).toEqual([]);
+		expect(stop()).toHaveLength(1);
+	});
+
+	test('caps the queue at 100 events', () => {
+		const { click, stop } = setup('<button id="a">a</button>', { dedupe: false });
+		for (let i = 0; i < 1000; i++) click('#a');
+		expect(stop()).toHaveLength(100);
 	});
 
 	test('falls back to the defaults when the config is malformed', () => {
@@ -223,5 +299,94 @@ describe('dispatch', () => {
 
 	test('does nothing when there is nothing to replay', () => {
 		expect(dispatch(null)).toEqual([]);
+	});
+
+	test('keeps going when an event cannot be copied, and reports the error', () => {
+		const { window, document, click, take } = setup(
+			'<button id="a">a</button><button id="b">b</button><button id="c">c</button>'
+		);
+
+		// stands in for e.g. TextEvent ('textInput'), whose constructor is illegal
+		class IllegalEvent extends window.Event {
+			/** @param {string} type @param {EventInit} init */
+			constructor(type, init) {
+				if (init instanceof window.Event) throw new window.TypeError('Illegal constructor');
+				super(type, init);
+			}
+		}
+
+		click('#a');
+		document.querySelector('#b')?.dispatchEvent(new IllegalEvent('click', { bubbles: true }));
+		click('#c');
+
+		let c = 0;
+		document.querySelector('#c')?.addEventListener('click', () => c++);
+
+		const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+		expect(dispatch(take())).toHaveLength(2);
+		expect(error).toHaveBeenCalledOnce();
+		error.mockRestore();
+
+		expect(c).toBe(1);
+		expect(document.querySelector('[data-replay-pending]')).toBe(null);
+	});
+
+	test('keeps going when a handler throws', () => {
+		const { document, click, take, errors } = setup(
+			'<button id="a">a</button><button id="b">b</button>'
+		);
+		click('#a');
+		click('#b');
+		let b = 0;
+		document.querySelector('#a')?.addEventListener('click', () => {
+			throw new Error('handler failed');
+		});
+		document.querySelector('#b')?.addEventListener('click', () => b++);
+		expect(dispatch(take())).toHaveLength(2);
+		expect(b).toBe(1);
+		expect(errors.join()).toContain('handler failed');
+	});
+});
+
+describe('replay', () => {
+	afterEach(() => {
+		// @ts-expect-error -- set by the tests below
+		delete globalThis.window;
+	});
+
+	test('stops capturing at once and replays one task later, so nothing runs twice', async () => {
+		const { window, document, click } = setup('<button id="a">a</button>');
+		// @ts-expect-error -- replay() reads the global window
+		globalThis.window = window;
+
+		click('#a'); // before hydration: captured
+
+		// hydration attaches the handler, then replay() is called
+		let count = 0;
+		document.querySelector('#a')?.addEventListener('click', () => count++);
+		const replayed = replay();
+
+		click('#a'); // after hydration, before the replay task: handled once, by the app
+		expect(count).toBe(1);
+
+		expect(await replayed).toHaveLength(1);
+		expect(count).toBe(2);
+		expect('__sveltekit_event_replay' in window).toBe(false);
+	});
+
+	test('resolves to an empty array when the script never ran', async () => {
+		const { window } = new JSDOM('<!doctype html><body></body>');
+		// @ts-expect-error -- replay() reads the global window
+		globalThis.window = window;
+		expect(await replay()).toEqual([]);
+	});
+
+	test('is not fooled by an element with id="__sveltekit_event_replay"', async () => {
+		const { window } = new JSDOM(
+			'<!doctype html><body><h2 id="__sveltekit_event_replay">x</h2></body>'
+		);
+		// @ts-expect-error -- replay() reads the global window
+		globalThis.window = window;
+		expect(await replay()).toEqual([]);
 	});
 });

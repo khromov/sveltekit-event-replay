@@ -17,7 +17,7 @@ replays them once it has. Render it once, in your root `+layout.svelte`:
 <script>
 	import { afterNavigate } from '$app/navigation';
 	import { SCRIPT } from './generated/script.js';
-	import { dispatch, take } from './replay.js';
+	import { replay } from './replay.js';
 
 	/**
 	 * @typedef {object} Props
@@ -34,12 +34,13 @@ replays them once it has. Render it once, in your root `+layout.svelte`:
 	 * `'[data-no-replay]'`.
 	 * @property {string | false} [pending]
 	 * Attribute set on elements that have an event waiting to be replayed, for styling. Defaults to
-	 * `'data-replay-pending'`. Pass `false` to disable.
+	 * `'data-replay-pending'`. Pass `false` to disable. Use a name your elements don't otherwise
+	 * have: it is removed when the event is replayed.
 	 * @property {number} [timeout]
 	 * Milliseconds to wait for hydration before dropping captured events and clearing `pending`
 	 * markers. `0` waits forever. Defaults to `10000`.
 	 * @property {(events: Event[]) => void} [onreplay]
-	 * Called after hydration with the events that were replayed (possibly none).
+	 * Called after hydration with the events that were replayed (an empty array if there were none).
 	 */
 
 	/** @type {Props} */
@@ -64,14 +65,7 @@ replays them once it has. Render it once, in your root `+layout.svelte`:
 	});
 
 	afterNavigate(({ type }) => {
-		if (type !== 'enter') return;
-
-		// Stop capturing right away: from here on, Svelte's own handlers receive new events
-		const taken = take();
-		if (!taken) return;
-
-		// Wait a task so that SvelteKit's router has started before the handlers run
-		setTimeout(() => onreplay?.(dispatch(taken)));
+		if (type === 'enter') replay().then((events) => onreplay?.(events));
 	});
 </script>
 

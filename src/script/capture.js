@@ -8,18 +8,34 @@
 	/** @type {Partial<import('../lib/types.js').CaptureConfig>} */
 	let config = {};
 	try {
-		config = JSON.parse(document.currentScript?.getAttribute('data-config') || '{}');
+		// `Object()` turns `null` and other non-objects into something we can destructure
+		config = Object(JSON.parse(document.currentScript?.getAttribute('data-config') || '{}'));
 	} catch {
-		// malformed config — fall back to defaults
+		// malformed config — fall back to the defaults
 	}
 
-	const {
+	let {
 		events = ['click'],
 		dedupe = true,
 		ignore = '[data-no-replay]',
 		pending = 'data-replay-pending',
 		timeout = 10000
 	} = config;
+
+	if (!Array.isArray(events)) events = ['click'];
+
+	// An invalid selector or attribute name would throw on every event, so check them once
+	try {
+		if (ignore) document.documentElement.matches(ignore);
+	} catch {
+		ignore = '[data-no-replay]';
+	}
+
+	try {
+		if (pending) document.createElement('i').setAttribute(pending, '');
+	} catch {
+		pending = 'data-replay-pending';
+	}
 
 	// Clicking these already did something natively (navigation, toggling, focusing...),
 	// so replaying the click after hydration would do it a second time
@@ -51,6 +67,9 @@
 			return;
 		}
 
+		// nobody clicks 100 things in a few seconds on purpose
+		if (queue.length >= 100) return;
+
 		queue.push({ event, key });
 		if (pending) key.setAttribute(pending, '');
 	};
@@ -66,12 +85,18 @@
 	for (const type of events) addEventListener(type, capture, true);
 
 	// If hydration never happens (`csr = false`, a failed chunk, a very slow network),
-	// stop buffering and clear the pending markers so the page doesn't look stuck
-	const timer = timeout
-		? setTimeout(() => {
-				if (pending) for (const { key } of stop()) key.removeAttribute(pending);
-			}, timeout)
-		: undefined;
+	// stop buffering and clear the pending markers so the page doesn't look stuck.
+	// `0`, negative numbers and non-numbers (`Infinity` arrives as `null`) wait forever
+	const timer =
+		timeout > 0
+			? setTimeout(
+					() => {
+						const captured = stop();
+						if (pending) for (const { key } of captured) key.removeAttribute(pending);
+					},
+					Math.min(timeout, 2 ** 31 - 1) // larger delays overflow and fire immediately
+				)
+			: undefined;
 
 	/** @type {import('../lib/types.js').CaptureApi} */
 	window.__sveltekit_event_replay = { stop, pending };

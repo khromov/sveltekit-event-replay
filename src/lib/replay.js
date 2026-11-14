@@ -8,7 +8,9 @@
  */
 export function take() {
 	const api = window.__sveltekit_event_replay;
-	if (!api) return null;
+
+	// also guards against DOM clobbering (an element with id="__sveltekit_event_replay")
+	if (typeof api?.stop !== 'function') return null;
 
 	delete window.__sveltekit_event_replay;
 	return { captured: api.stop(), pending: api.pending };
@@ -33,21 +35,28 @@ export function dispatch(taken) {
 		// hydration may have replaced the node (e.g. after a mismatch) — there's nothing to replay on
 		if (!target.isConnected) continue;
 
-		// the event init dictionaries (MouseEventInit, InputEventInit...) read their fields off the original
-		const EventConstructor = /** @type {new (type: string, init: Event) => Event} */ (
-			event.constructor
-		);
-		const copy = new EventConstructor(event.type, event);
+		try {
+			// the event init dictionaries (MouseEventInit, InputEventInit...) read their fields off the original
+			const EventConstructor = /** @type {new (type: string, init: Event) => Event} */ (
+				event.constructor
+			);
+			const copy = new EventConstructor(event.type, event);
 
-		target.dispatchEvent(copy);
-		dispatched.push(copy);
+			target.dispatchEvent(copy);
+			dispatched.push(copy);
+		} catch (error) {
+			// some event types can't be constructed (e.g. TextEvent) — report it and keep going
+			if (typeof reportError === 'function') reportError(error);
+			else console.error(error);
+		}
 	}
 
 	return dispatched;
 }
 
 /**
- * Stops the inline capture script and re-dispatches everything it captured, in order.
+ * Stops capturing right away, then — one task later, once SvelteKit's router has started —
+ * re-dispatches everything the inline script captured, in order.
  *
  * `<EventReplay>` does this for you once SvelteKit has hydrated the page. Call it yourself only if
  * you render {@link SCRIPT} some other way, e.g. by pasting it into `app.html`.
@@ -56,8 +65,10 @@ export function dispatch(taken) {
  * `addEventListener` listeners, but `event.isTrusted` is `false` and they don't count as user
  * activation, so APIs like `window.open` or the clipboard may refuse them.
  *
- * @returns {Event[]} the events that were dispatched
+ * @returns {Promise<Event[]>} the events that were dispatched (empty if there was nothing to replay)
  */
 export function replay() {
-	return dispatch(take());
+	// From here on, Svelte's own handlers receive new events — stop capturing them synchronously
+	const taken = take();
+	return new Promise((fulfil) => setTimeout(() => fulfil(dispatch(taken))));
 }
