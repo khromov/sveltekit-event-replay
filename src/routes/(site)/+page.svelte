@@ -32,7 +32,7 @@
 	<meta property="og:image:height" content="1260" />
 	<meta
 		property="og:image:alt"
-		content="The sveltekit-event-replay website, headed “Replay clicks made before hydration”, with a demo comparing clicks lost without the package to clicks replayed with it."
+		content="The sveltekit-event-replay website, headed “Replay clicks made before hydration”, above the command to install it."
 	/>
 	<meta name="twitter:card" content="summary_large_image" />
 </svelte:head>
@@ -62,7 +62,7 @@
 		<h1>Replay clicks made before hydration</h1>
 
 		<p class="lead">
-			SvelteKit shows server-rendered HTML before its JavaScript loads. This inline script, 860 B
+			SvelteKit shows server-rendered HTML before its JavaScript loads. This inline script, 1 kB
 			gzipped, captures clicks made in that gap and replays them once the page hydrates.
 		</p>
 
