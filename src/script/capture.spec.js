@@ -104,6 +104,10 @@ describe('capture', () => {
 		['a submit button in a form', '<form><button id="t">x</button></form>'],
 		['a reset button in a form', '<form><button id="t" type="reset">x</button></form>'],
 		['a button linked to a form', '<form id="f"></form><button id="t" form="f">x</button>'],
+		['an input type=submit in a form', '<form><input id="t" type="submit"></form>'],
+		['a popover button', '<button id="t" popovertarget="p">x</button><div id="p" popover>p</div>'],
+		['a child of a popover button', '<button popovertarget="p"><i id="t">x</i></button>'],
+		['a command button', '<button id="t" commandfor="d" command="show-modal">x</button>'],
 		['an element with data-no-replay', '<button id="t" data-no-replay>x</button>'],
 		['a child of data-no-replay', '<div data-no-replay><button id="t">x</button></div>']
 	])('ignores clicks on %s', (_, body) => {
@@ -117,7 +121,14 @@ describe('capture', () => {
 		['a type=button button in a form', '<form><button id="t" type="button">x</button></form>'],
 		['a submit button without a form', '<button id="t" type="submit">x</button>'],
 		['contenteditable=false', '<div id="t" contenteditable="false">x</div>'],
-		['an anchor without href', '<a id="t">x</a>']
+		['an anchor without href', '<a id="t">x</a>'],
+		['an input type=button', '<input id="t" type="button" value="x">'],
+		['an input type=submit without a form', '<input id="t" type="submit">'],
+		[
+			'a button inside a summary',
+			'<details><summary>s <button id="t">x</button></summary></details>'
+		],
+		['a custom control inside a label', '<label>x <span id="t" role="checkbox">c</span></label>']
 	])('captures clicks on %s', (_, body) => {
 		const { click, stop } = setup(body);
 		click('#t');
@@ -150,7 +161,7 @@ describe('capture', () => {
 		expect(none.document.querySelector('#a')?.attributes).toHaveLength(1);
 	});
 
-	test('captures other event types, without the native-element filter', () => {
+	test('captures every event of other types, without the native-element filter', () => {
 		const { window, document, click, stop } = setup('<input id="t"><button id="b">b</button>', {
 			events: ['click', 'input']
 		});
@@ -162,8 +173,43 @@ describe('capture', () => {
 		click('#b');
 		expect(stop()).toEqual([
 			{ type: 'input', key: 't' },
+			{ type: 'input', key: 't' },
 			{ type: 'click', key: 'b' }
 		]);
+	});
+
+	test('never captures submit or reset events', () => {
+		const { window, document, stop } = setup('<form id="f"><button>go</button></form>', {
+			events: ['click', 'submit', 'reset']
+		});
+		const form = /** @type {HTMLFormElement} */ (document.querySelector('#f'));
+		form.addEventListener('submit', (event) => event.preventDefault());
+		form.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+		form.dispatchEvent(new window.Event('reset', { bubbles: true }));
+		expect(stop()).toEqual([]);
+	});
+
+	test('treats clicks inside a focusable element as clicks on it', () => {
+		const { document, click, stop } = setup(
+			'<div id="card" tabindex="0"><h3 id="title">t</h3><p id="text">x</p></div>' +
+				'<main tabindex="-1"><p id="loose">y</p></main>'
+		);
+		click('#title');
+		click('#text');
+		click('#loose');
+		expect(stop()).toEqual([
+			{ type: 'click', key: 'card' },
+			{ type: 'click', key: 'loose' }
+		]);
+		expect(document.querySelector('#card')?.hasAttribute('data-replay-pending')).toBe(true);
+	});
+
+	test('only marks interactive elements as pending', () => {
+		const { document, click, stop } = setup('<main><p id="text">x</p></main>');
+		click('#text');
+		click('main');
+		expect(document.querySelector('[data-replay-pending]')).toBe(null);
+		expect(stop()).toHaveLength(2);
 	});
 
 	test('stops capturing once stopped', () => {
@@ -331,6 +377,53 @@ describe('dispatch', () => {
 		expect(document.querySelector('[data-replay-pending]')).toBe(null);
 	});
 
+	test('skips elements that are disabled by the time they are replayed', () => {
+		const { document, click, take } = setup(
+			'<button id="buy">buy</button><button id="cancel">cancel</button>' +
+				'<fieldset id="set"><button id="inner">inner</button></fieldset>'
+		);
+		click('#buy');
+		click('#cancel');
+		click('#inner');
+
+		/** @type {string[]} */
+		const log = [];
+		const buy = /** @type {HTMLButtonElement} */ (document.querySelector('#buy'));
+		const cancel = /** @type {HTMLButtonElement} */ (document.querySelector('#cancel'));
+		buy.addEventListener('click', () => {
+			log.push('buy');
+			cancel.disabled = true; // e.g. `disabled={busy}`
+		});
+		cancel.addEventListener('click', () => log.push('cancel'));
+		document.querySelector('#inner')?.addEventListener('click', () => log.push('inner'));
+		/** @type {HTMLFieldSetElement} */ (document.querySelector('#set')).disabled = true;
+
+		expect(dispatch(take())).toHaveLength(1);
+		expect(log).toEqual(['buy']);
+		expect(document.querySelector('[data-replay-pending]')).toBe(null);
+	});
+
+	test('skips elements whose text changed during hydration', () => {
+		const { document, click, take } = setup(
+			'<ul><li><button id="first">one</button></li><li><button id="second">two</button></li></ul>'
+		);
+		click('#first');
+		click('#second');
+
+		// hydration reused the first node for a different item
+		/** @type {HTMLElement} */ (document.querySelector('#first')).textContent = 'three';
+
+		/** @type {string[]} */
+		const log = [];
+		for (const button of document.querySelectorAll('button')) {
+			button.addEventListener('click', () => log.push(/** @type {string} */ (button.textContent)));
+		}
+
+		expect(dispatch(take())).toHaveLength(1);
+		expect(log).toEqual(['two']);
+		expect(document.querySelector('[data-replay-pending]')).toBe(null);
+	});
+
 	test('keeps going when a handler throws', () => {
 		const { document, click, take, errors } = setup(
 			'<button id="a">a</button><button id="b">b</button>'
@@ -354,24 +447,35 @@ describe('replay', () => {
 		delete globalThis.window;
 	});
 
-	test('stops capturing at once and replays one task later, so nothing runs twice', async () => {
-		const { window, document, click } = setup('<button id="a">a</button>');
+	test('holds events back until the replay, so they run once and in order', async () => {
+		const { window, document, click } = setup(
+			'<button id="a">a</button><button id="b">b</button><input id="check" type="checkbox">'
+		);
 		// @ts-expect-error -- replay() reads the global window
 		globalThis.window = window;
 
 		click('#a'); // before hydration: captured
 
-		// hydration attaches the handler, then replay() is called
-		let count = 0;
-		document.querySelector('#a')?.addEventListener('click', () => count++);
+		// hydration attaches the handlers, then replay() is called
+		/** @type {string[]} */
+		const log = [];
+		for (const id of ['a', 'b', 'check']) {
+			document.querySelector(`#${id}`)?.addEventListener('click', () => log.push(id));
+		}
 		const replayed = replay();
 
-		click('#a'); // after hydration, before the replay task: handled once, by the app
-		expect(count).toBe(1);
+		// after hydration, before the replay task (e.g. while hydration blocked the main thread)
+		click('#b'); // held back, so it can't overtake the click on #a
+		click('#a'); // a repeat of a captured click: dropped, like before hydration
+		click('#check'); // native: never captured, so the app gets it right away
+		expect(log).toEqual(['check']);
 
-		expect(await replayed).toHaveLength(1);
-		expect(count).toBe(2);
+		expect(await replayed).toHaveLength(2);
+		expect(log).toEqual(['check', 'a', 'b']);
 		expect('__sveltekit_event_replay' in window).toBe(false);
+
+		click('#a'); // after the replay: the app handles it, nothing is captured
+		expect(log).toEqual(['check', 'a', 'b', 'a']);
 	});
 
 	test('resolves to an empty array when the script never ran', async () => {

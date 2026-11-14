@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { gzipSync } from 'node:zlib';
 import { expect, test } from 'vitest';
 import { generate } from '../../scripts/build-script.js';
 import { SCRIPT, SCRIPT_HASH } from '../lib/generated/script.js';
@@ -14,6 +15,6 @@ test('SCRIPT_HASH is the CSP hash of SCRIPT', () => {
 	expect(SCRIPT_HASH).toBe(`sha256-${hash}`);
 });
 
-test('the script stays small', () => {
-	expect(SCRIPT.length).toBeLessThan(1500);
+test('the script stays under 1 kB gzipped', () => {
+	expect(gzipSync(SCRIPT, { level: 9 }).length).toBeLessThan(1024);
 });

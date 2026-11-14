@@ -22,7 +22,10 @@
 		timeout = 10000
 	} = config;
 
-	if (!Array.isArray(events)) events = ['click'];
+	// Before hydration, every form submission is a native one — replaying it would submit twice
+	events = (Array.isArray(events) ? events : ['click']).filter(
+		(type) => type !== 'submit' && type !== 'reset'
+	);
 
 	// An invalid selector or attribute name would throw on every event, so check them once
 	try {
@@ -37,13 +40,46 @@
 		pending = 'data-replay-pending';
 	}
 
-	// Clicking these already did something natively (navigation, toggling, focusing...),
-	// so replaying the click after hydration would do it a second time
-	const native =
-		'a[href],area[href],input,select,textarea,label,summary,option,[contenteditable]:not([contenteditable="false"])';
+	// Elements that are clicked as a whole: clicks anywhere inside one count as clicks on it
+	const clickable = 'button,[role="button"],[tabindex]:not([tabindex^="-"])';
+
+	/**
+	 * Whether the browser already did something with this click (navigating, toggling, focusing,
+	 * opening a popover...), in which case replaying it would do it a second time.
+	 *
+	 * @param {Element} target
+	 */
+	const native = (target) => {
+		if (target.closest('a[href],area[href],[contenteditable]:not([contenteditable="false"])')) {
+			return true;
+		}
+
+		// the nearest interactive element decides — e.g. a <button> inside a <summary> is a button
+		const element = /** @type {HTMLElement | null} */ (
+			target.closest('button,input,select,textarea,label,summary,option')
+		);
+		if (!element) return false;
+		if (element.matches('[popovertarget],[commandfor]')) return true;
+
+		const { localName, type } = /** @type {HTMLButtonElement} */ (element);
+
+		if (localName === 'button' || /^(button|submit|reset|image)$/.test(type)) {
+			// submit/reset buttons submit their form; without a form they do nothing
+			return !!(/** @type {HTMLButtonElement} */ (element).form) && type !== 'button';
+		}
+
+		// a label toggles its control — if it has one
+		if (localName === 'label') return !!(/** @type {HTMLLabelElement} */ (element).control);
+
+		return true;
+	};
 
 	/** @type {import('../lib/types.js').CapturedEvent[]} */
 	let queue = [];
+
+	// Set once the app has hydrated: from then until the replay, captured events are held back
+	// from the app, so that they can't overtake the ones captured before them
+	let held = false;
 
 	/** @param {Event} event */
 	const capture = (event) => {
@@ -53,25 +89,33 @@
 		let key = target;
 
 		if (event.type === 'click') {
-			if (target.closest(native)) return;
-
-			// submit/reset buttons that belong to a form are handled by the browser
-			const button = target.closest('button');
-			if (button?.form && button.type !== 'button') return;
-
-			// treat clicks anywhere inside the same button as clicks on that button
-			key = target.closest('button,[role="button"]') ?? target;
+			if (native(target)) return;
+			key = target.closest(clickable) ?? target;
 		}
 
-		if (dedupe && queue.some((item) => item.key === key && item.event.type === event.type)) {
+		if (held) event.stopImmediatePropagation();
+
+		// impatient repeated clicks count once — other event types (keys, input...) are all kept
+		if (
+			dedupe &&
+			event.type === 'click' &&
+			queue.some((item) => item.key === key && item.event.type === 'click')
+		) {
 			return;
 		}
 
 		// nobody clicks 100 things in a few seconds on purpose
 		if (queue.length >= 100) return;
 
-		queue.push({ event, key });
-		if (pending) key.setAttribute(pending, '');
+		// the text is compared before replaying: if hydration changed it, the element may no longer
+		// mean what the user clicked (e.g. a reordered list, or "Follow" that turned into "Unfollow")
+		queue.push({ event, key, text: key.textContent });
+
+		// only mark interactive elements — marking e.g. <main> after a click on empty space would
+		// restyle the whole page
+		if (pending && key.matches(`${clickable},input,select,textarea`)) {
+			key.setAttribute(pending, '');
+		}
 	};
 
 	const stop = () => {
@@ -99,5 +143,11 @@
 			: undefined;
 
 	/** @type {import('../lib/types.js').CaptureApi} */
-	window.__sveltekit_event_replay = { stop, pending };
+	window.__sveltekit_event_replay = {
+		stop,
+		hold: () => {
+			held = true;
+		},
+		pending
+	};
 })();

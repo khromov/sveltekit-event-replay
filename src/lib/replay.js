@@ -1,4 +1,5 @@
 /** @import { CapturedEvent } from './types.js' */
+import { flushSync } from 'svelte';
 
 /**
  * Stops the inline capture script and hands over what it captured. Returns `null` if the script
@@ -27,13 +28,18 @@ export function dispatch(taken) {
 	const dispatched = [];
 	if (!taken) return dispatched;
 
-	for (const { event, key } of taken.captured) {
+	// Compare texts before replaying anything — replayed handlers may change them on purpose
+	// (a button showing a count). A text that hydration changed means the element may no longer
+	// mean what the user clicked: a reordered list, or "Follow" that turned into "Unfollow"
+	const changed = taken.captured.map(({ key, text }) => key.textContent !== text);
+
+	for (const [index, { event, key }] of taken.captured.entries()) {
 		if (taken.pending) key.removeAttribute(taken.pending);
 
 		const target = /** @type {Element} */ (event.target);
 
-		// hydration may have replaced the node (e.g. after a mismatch) — there's nothing to replay on
-		if (!target.isConnected) continue;
+		// Skip events whose element hydration replaced (e.g. after a mismatch), changed, or disabled
+		if (!target.isConnected || changed[index] || target.closest(':disabled')) continue;
 
 		try {
 			// the event init dictionaries (MouseEventInit, InputEventInit...) read their fields off the original
@@ -44,6 +50,9 @@ export function dispatch(taken) {
 
 			target.dispatchEvent(copy);
 			dispatched.push(copy);
+
+			// apply the handler's state changes to the DOM (e.g. `disabled={busy}`) before the next event
+			flushSync();
 		} catch (error) {
 			// some event types can't be constructed (e.g. TextEvent) — report it and keep going
 			if (typeof reportError === 'function') reportError(error);
@@ -55,20 +64,21 @@ export function dispatch(taken) {
 }
 
 /**
- * Stops capturing right away, then — one task later, once SvelteKit's router has started —
- * re-dispatches everything the inline script captured, in order.
+ * Replays everything the inline script captured, in order, one task from now — once SvelteKit's
+ * router has started. Until then, new events that would be captured are held back from the app
+ * and replayed after the earlier ones, so nothing runs twice or out of order.
  *
  * `<EventReplay>` does this for you once SvelteKit has hydrated the page. Call it yourself only if
  * you render {@link SCRIPT} some other way, e.g. by pasting it into `app.html`.
  *
  * Replayed events are synthetic: they reach Svelte's handlers (delegated `onclick` included) and
- * `addEventListener` listeners, but `event.isTrusted` is `false` and they don't count as user
- * activation, so APIs like `window.open` or the clipboard may refuse them.
+ * `addEventListener` listeners, with `event.isTrusted` set to `false`.
  *
  * @returns {Promise<Event[]>} the events that were dispatched (empty if there was nothing to replay)
  */
 export function replay() {
-	// From here on, Svelte's own handlers receive new events — stop capturing them synchronously
-	const taken = take();
-	return new Promise((fulfil) => setTimeout(() => fulfil(dispatch(taken))));
+	const api = window.__sveltekit_event_replay;
+	if (typeof api?.hold === 'function') api.hold();
+
+	return new Promise((fulfil) => setTimeout(() => fulfil(dispatch(take()))));
 }
