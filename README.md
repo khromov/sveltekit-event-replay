@@ -60,9 +60,9 @@ That's it. A click on any element before hydration is replayed after it, on the 
 | `events`   | `['click']`             | Event types to capture. Add `'input'` and/or `'change'` to also run `oninput`/`onchange` handlers for fields edited before hydration (the browser already updated their values; `bind:` needs no help). |
 | `dedupe`   | `true`                  | Replay at most one event per element and event type.                                                                                                                                                    |
 | `ignore`   | `'[data-no-replay]'`    | CSS selector for elements (and their descendants) that are never captured. `false` captures everything.                                                                                                 |
-| `pending`  | `'data-replay-pending'` | Attribute set on elements while their event waits to be replayed. `false` to disable.                                                                                                                   |
-| `timeout`  | `10000`                 | Milliseconds to wait for hydration before dropping captured events. `0` waits forever.                                                                                                                  |
-| `onreplay` | —                       | `(events: Event[]) => void`, called after hydration with the events that were replayed — handy for analytics.                                                                                           |
+| `pending`  | `'data-replay-pending'` | Attribute set on elements while their event waits to be replayed. `false` to disable. Pick a name your elements don't otherwise use: it's removed on replay.                                            |
+| `timeout`  | `10000`                 | Milliseconds to wait for hydration before dropping captured events. `0` (or less) waits forever.                                                                                                        |
+| `onreplay` | —                       | `(events: Event[]) => void`, called after hydration with the events that were replayed (an empty array if there were none) — handy for analytics.                                                       |
 
 ```svelte
 <EventReplay
@@ -72,7 +72,7 @@ That's it. A click on any element before hydration is replayed after it, on the 
 />
 ```
 
-The options are read once, when the page is rendered on the server.
+The options except `onreplay` are read once, when the page is rendered on the server. Invalid values (a malformed `ignore` selector, say) fall back to the defaults, and at most 100 events are kept.
 
 ## Content Security Policy
 
@@ -100,14 +100,14 @@ This works alongside SvelteKit's own nonces/hashes. If you set CSP headers yours
 
 ## Without the component
 
-`SCRIPT` is exported if you'd rather put the script into `app.html` yourself (wrap it in `<script>…</script>` in `<head>`, optionally with a `data-config='{"timeout":5000}'` attribute). Then call `replay()` once the app has hydrated, e.g. from `afterNavigate` in your root layout:
+`SCRIPT` is exported if you'd rather put the script into `app.html` yourself (wrap it in `<script>…</script>` in `<head>`, optionally with a `data-config='{"timeout":5000}'` attribute). Then call `replay()` once the app has hydrated, e.g. from `afterNavigate` in your root layout. It stops capturing right away and replays a task later, once SvelteKit's router has started, resolving to the replayed events:
 
 ```js
 import { afterNavigate } from '$app/navigation';
 import { replay } from 'sveltekit-event-replay';
 
 afterNavigate(({ type }) => {
-	if (type === 'enter') setTimeout(replay);
+	if (type === 'enter') replay();
 });
 ```
 
