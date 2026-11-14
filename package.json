@@ -58,7 +58,8 @@
 		"test:unit": "vitest",
 		"test": "npm run test:unit -- --run && npm run test:e2e",
 		"test:e2e": "playwright install && playwright test",
-		"generate": "node scripts/build-script.js"
+		"generate": "node scripts/build-script.js",
+		"og": "node scripts/og-image.js"
 	},
 	"peerDependencies": {
 		"@sveltejs/kit": "^2.0.0 || ^3.0.0",

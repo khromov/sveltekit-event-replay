@@ -3,6 +3,13 @@
 	import Demo from './Demo.svelte';
 	import { csp, install, usage } from './snippets.js';
 
+	const title = 'sveltekit-event-replay';
+	const description =
+		'Capture clicks that happen before SvelteKit hydrates the page, and replay them once it has.';
+
+	// link previews need absolute URLs. og.png is made by `npm run og`
+	const url = 'https://khromov.github.io/sveltekit-event-replay/';
+
 	let copied = $state(false);
 
 	async function copy() {
@@ -13,11 +20,21 @@
 </script>
 
 <svelte:head>
-	<title>sveltekit-event-replay</title>
+	<title>{title}</title>
+	<meta name="description" content={description} />
+
+	<meta property="og:title" content={title} />
+	<meta property="og:description" content={description} />
+	<meta property="og:type" content="website" />
+	<meta property="og:url" content={url} />
+	<meta property="og:image" content="{url}og.png" />
+	<meta property="og:image:width" content="2400" />
+	<meta property="og:image:height" content="1260" />
 	<meta
-		name="description"
-		content="Capture clicks that happen before SvelteKit hydrates the page, and replay them once it has."
+		property="og:image:alt"
+		content="The sveltekit-event-replay website, headed “Replay clicks made before hydration”, with a demo comparing clicks lost without the package to clicks replayed with it."
 	/>
+	<meta name="twitter:card" content="summary_large_image" />
 </svelte:head>
 
 <div class="backdrop" aria-hidden="true"></div>

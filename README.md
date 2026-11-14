@@ -171,6 +171,7 @@ npm run dev        # the website, and the e2e fixtures at /fixtures/default
 npm test           # unit tests (vitest + jsdom) and e2e tests (Playwright: Chromium, Firefox, WebKit)
 npm run lint
 npm run check
+npm run og         # rebuilds static/og.png, the website's link preview image, from a screenshot
 ```
 
 The inline script's source is [`src/script/capture.js`](src/script/capture.js). `npm run generate` minifies it into `src/lib/generated/script.js` and computes its CSP hash; a unit test fails if the generated file is out of date. The e2e tests hold back SvelteKit's client JavaScript to simulate a slow network and click around before the page hydrates. Their pages live in `src/routes/(fixtures)`, next to the [website](https://khromov.github.io/sveltekit-event-replay/) in `src/routes/(site)`. Both are prerendered with a strict CSP, so the tests also verify `SCRIPT_HASH`.
