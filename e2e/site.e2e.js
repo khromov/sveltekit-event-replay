@@ -26,7 +26,7 @@ test('the demo loses clicks without the package', async ({ page }) => {
 	const add = page.getByRole('button', { name: 'Add to cart' });
 
 	// switching modes reloads the mock page
-	await page.getByRole('radio', { name: /^Without/ }).check();
+	await page.getByRole('radio', { name: /^Standard SvelteKit/ }).check();
 	await add.click();
 	await add.click();
 	await add.click();
@@ -34,9 +34,11 @@ test('the demo loses clicks without the package', async ({ page }) => {
 	await expect(page.getByText('3 lost')).toBeVisible();
 	await expect(page.getByText('3 clicks on 1 button')).toBeVisible();
 
+	await expect(page.locator('.lost')).toBeHidden();
 	await expect(page.getByText('Hydrated')).toBeVisible(HYDRATED);
 	await expect(page.getByText('0 in cart')).toBeVisible();
 	await expect(page.getByText('3 lost')).toBeVisible();
+	await expect(page.locator('.lost')).toHaveText('Events lost');
 
 	// the mock page works now
 	await add.click();
@@ -71,6 +73,7 @@ test('the demo replays clicks with the package, once per button', async ({ page 
 	await expect(page.getByText('1 like')).toBeVisible();
 	await expect(page.getByText('2 replayed')).toBeVisible();
 	await expect(page.getByText('0 lost')).toBeVisible();
+	await expect(page.locator('.lost')).toBeHidden();
 	await expect(gift_wrap).toBeChecked();
 });
 
@@ -79,7 +82,7 @@ test('the demo works with the keyboard', async ({ page }) => {
 
 	await page.getByRole('radio', { name: /^With EventReplay/ }).focus();
 	await page.keyboard.press('ArrowLeft');
-	await expect(page.getByRole('radio', { name: /^Without/ })).toBeChecked();
+	await expect(page.getByRole('radio', { name: /^Standard SvelteKit/ })).toBeChecked();
 
 	await page.getByRole('button', { name: 'Add to cart' }).focus();
 	await page.keyboard.press('Enter');

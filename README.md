@@ -9,10 +9,10 @@ Try the demo at [khromov.github.io/sveltekit-event-replay](https://khromov.githu
 ## Install
 
 ```sh
-npm install sveltekit-event-replay
+npm i -D sveltekit-event-replay
 ```
 
-Works with SvelteKit 2 and 3, and Svelte 5.
+It's a dev dependency because SvelteKit bundles it into your app. Works with SvelteKit 2 and 3, and Svelte 5.
 
 ## Usage
 

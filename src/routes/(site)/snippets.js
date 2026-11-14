@@ -1,7 +1,7 @@
 // The code samples shown on the website. They live in a .js file because a Svelte component can't
 // contain a closing script tag inside a string
 
-export const install = 'npm install sveltekit-event-replay';
+export const install = 'npm i -D sveltekit-event-replay';
 
 /** Split around the one line that matters, so the page can highlight it */
 export const usage = {

@@ -15,7 +15,7 @@ package would (or wouldn't) handle them.
 	/** @typedef {'cart' | 'like'} Target */
 
 	const modes = /** @type {const} */ ([
-		{ value: 'without', label: 'Without' },
+		{ value: 'without', label: 'Standard SvelteKit' },
 		{ value: 'with', label: 'With EventReplay' }
 	]);
 
@@ -340,19 +340,34 @@ package would (or wouldn't) handle them.
 				<span><strong>Wool socks</strong><br />$12</span>
 			</p>
 
-			<!-- the mock shop's cart; "N in cart" next to the button says the same for screen readers -->
-			<span class="cart" aria-hidden="true" bind:this={cart}>
-				<svg viewBox="0 0 24 24" width="26" height="26">
-					<path
-						d="M2.5 3.5h2.4l2.2 10.6a1.6 1.6 0 0 0 1.6 1.3h8.6a1.6 1.6 0 0 0 1.6-1.2L21 7.5H5.6"
-					/>
-					<circle cx="9.5" cy="19.5" r="1.4" />
-					<circle cx="17.5" cy="19.5" r="1.4" />
-				</svg>
-				{#if landed}
-					{#key landed}
-						<b>{landed}</b>
-					{/key}
+			<!-- the mock shop's cart; "N in cart" next to the button says the same for screen readers,
+			     and the status bar says how many clicks were lost -->
+			<span class="corner" aria-hidden="true">
+				<span class="cart" bind:this={cart}>
+					<svg viewBox="0 0 24 24" width="26" height="26">
+						<path
+							d="M2.5 3.5h2.4l2.2 10.6a1.6 1.6 0 0 0 1.6 1.3h8.6a1.6 1.6 0 0 0 1.6-1.2L21 7.5H5.6"
+						/>
+						<circle cx="9.5" cy="19.5" r="1.4" />
+						<circle cx="17.5" cy="19.5" r="1.4" />
+					</svg>
+					{#if landed}
+						{#key landed}
+							<b>{landed}</b>
+						{/key}
+					{/if}
+				</span>
+
+				{#if mode === 'without' && hydrated && results.without.lost > 0}
+					<span class="lost">
+						<svg viewBox="0 0 24 24" width="22" height="22">
+							<circle cx="12" cy="12" r="9.5" />
+							<circle class="eye" cx="8.8" cy="10" r="1.1" />
+							<circle class="eye" cx="15.2" cy="10" r="1.1" />
+							<path d="M8.3 16.6a4.6 4.6 0 0 1 7.4 0" />
+						</svg>
+						Events lost
+					</span>
 				{/if}
 			</span>
 
@@ -624,10 +639,51 @@ package would (or wouldn't) handle them.
 		padding: 1.25rem;
 	}
 
-	.cart {
+	/* the cart, and what became of the clicks under it */
+	.corner {
 		position: absolute;
 		top: 1.25rem;
 		right: 1.25rem;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.lost {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.25rem;
+		font-size: 0.75rem;
+		font-weight: 500;
+		line-height: 1.2;
+		white-space: nowrap;
+		color: var(--bad);
+		animation: appear 0.35s ease-out;
+	}
+
+	.lost svg {
+		fill: none;
+		stroke: currentColor;
+		stroke-width: 1.6;
+		stroke-linecap: round;
+	}
+
+	.lost .eye {
+		fill: currentColor;
+		stroke: none;
+	}
+
+	@keyframes appear {
+		from {
+			opacity: 0;
+			transform: translateY(-0.25rem) scale(0.9);
+		}
+	}
+
+	.cart {
+		position: relative;
 		display: grid;
 		place-items: center;
 		width: 3.25rem;
@@ -819,7 +875,8 @@ package would (or wouldn't) handle them.
 	@media (prefers-reduced-motion: reduce) {
 		.indicator,
 		.action output.pop,
-		.cart b {
+		.cart b,
+		.lost {
 			animation: none;
 		}
 	}
@@ -841,7 +898,7 @@ package would (or wouldn't) handle them.
 			padding: 1rem;
 		}
 
-		.cart {
+		.corner {
 			top: 1rem;
 			right: 1rem;
 		}
