@@ -1,6 +1,6 @@
 {
 	"name": "sveltekit-event-replay",
-	"version": "0.0.1",
+	"version": "0.0.0",
 	"description": "Capture clicks that happen before SvelteKit hydrates the page, and replay them once it has.",
 	"keywords": [
 		"svelte",

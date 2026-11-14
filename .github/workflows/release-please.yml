@@ -1,0 +1,58 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+# Every job declares exactly the permissions it needs.
+permissions: {}
+
+# Never run two releases at once, and never cancel one halfway through publishing.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # release commits, tags and GitHub releases
+      pull-requests: write # open, update, label and comment on the release PR
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@v5
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  publish:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # npm trusted publishing (OIDC); also signs the provenance attestation
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+          persist-credentials: false
+
+      # Trusted publishing needs npm >= 11.5.1, which Node 24 bundles (Node 22 ships npm 10).
+      # registry-url only points npm at the registry: there is no NODE_AUTH_TOKEN, because
+      # `npm publish` exchanges the workflow's OIDC token for a short-lived publish token.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false # no dependency cache in a job that can publish
+
+      - run: npm ci
+
+      - run: npx vitest run
+
+      # `prepack` builds dist/. Provenance is generated automatically with trusted publishing.
+      - run: npm publish --access public
