@@ -105,18 +105,21 @@
 
 		let key = target;
 
-		if (event.type === 'click') {
+		// clicks, and the pointer and mouse presses that some UI libraries act on instead
+		const press = /^(click|(pointer|mouse)(down|up))$/.test(event.type);
+
+		if (press) {
 			if (native(target)) return;
 			key = clicked(target);
 		}
 
 		if (held) event.stopImmediatePropagation();
 
-		// impatient repeated clicks count once — other event types (keys, input...) are all kept
+		// impatient repeated presses count once — other event types (keys, input...) are all kept
 		if (
 			dedupe &&
-			event.type === 'click' &&
-			queue.some((item) => item.key === key && item.event.type === 'click')
+			press &&
+			queue.some((item) => item.key === key && item.event.type === event.type)
 		) {
 			return;
 		}
@@ -127,7 +130,7 @@
 		/** @type {import('../lib/types.js').CapturedEvent} */
 		const item = { event, key, text: null };
 
-		if (event.type === 'click') {
+		if (press) {
 			// the text is compared before replaying: if it changed, the element may no longer mean
 			// what the user clicked (a reordered list, "Follow" that turned into "Unfollow"). Not for
 			// <body> and <html>, whose text changes whenever anything on the page does

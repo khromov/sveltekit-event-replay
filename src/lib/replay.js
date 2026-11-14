@@ -59,6 +59,11 @@ export function dispatch(taken) {
 	// longer mean what the user clicked: a reordered list, or "Follow" that turned into "Unfollow"
 	const changed = taken.captured.map(({ key, text }) => text !== null && key.textContent !== text);
 
+	// Elements whose replayed Enter or Space keydown the app cancelled, the way a widget that handles
+	// its own keys does. Before hydration nothing cancelled it, so the browser also turned the key
+	// into a click, which a hydrated page wouldn't have seen
+	const handled = new Set();
+
 	for (const [index, { event, key, value, checked }] of taken.captured.entries()) {
 		if (taken.pending) key.removeAttribute(taken.pending);
 
@@ -66,6 +71,11 @@ export function dispatch(taken) {
 
 		// Skip events whose element hydration replaced (e.g. after a mismatch), changed, or disabled
 		if (!target.isConnected || changed[index] || target.closest(':disabled')) continue;
+
+		// a click made from a key press (detail 0) after a replayed key press the app handled
+		if (event.type === 'click' && /** @type {MouseEvent} */ (event).detail === 0) {
+			if (handled.has(target)) continue;
+		}
 
 		try {
 			// put back what the field held when the event happened, in case hydration reset it
@@ -81,6 +91,11 @@ export function dispatch(taken) {
 			replayed.add(copy);
 			target.dispatchEvent(copy);
 			dispatched.push(copy);
+
+			const { key: pressed } = /** @type {KeyboardEvent} */ (event);
+			if (event.type === 'keydown' && (pressed === 'Enter' || pressed === ' ')) {
+				if (copy.defaultPrevented) handled.add(target);
+			}
 
 			// apply the handler's state changes to the DOM (e.g. `disabled={busy}`) before the next event
 			flushSync();

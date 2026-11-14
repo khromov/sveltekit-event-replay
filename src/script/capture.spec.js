@@ -178,6 +178,22 @@ describe('capture', () => {
 		]);
 	});
 
+	test('groups and dedupes pointer presses like clicks', () => {
+		const { window, document, stop } = setup(
+			'<button id="trigger"><span id="label">Menu</span></button>',
+			{ events: ['click', 'pointerdown'] }
+		);
+		const press = () =>
+			document
+				.querySelector('#label')
+				?.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true }));
+
+		// an impatient double click on a menu trigger that opens on pointerdown
+		press();
+		press();
+		expect(stop()).toEqual([{ type: 'pointerdown', key: 'trigger' }]);
+	});
+
 	test('never captures submit or reset events', () => {
 		const { window, document, stop } = setup('<form id="f"><button>go</button></form>', {
 			events: ['click', 'submit', 'reset']
@@ -435,6 +451,38 @@ describe('dispatch', () => {
 		expect(dispatch(take())).toHaveLength(1);
 		expect(log).toEqual(['buy']);
 		expect(document.querySelector('[data-replay-pending]')).toBe(null);
+	});
+
+	test('skips the click the browser made of a key press that the app handles itself', () => {
+		const { window, document, take } = setup(
+			'<button id="handled">a</button><button id="plain">b</button>',
+			{ events: ['click', 'keydown'] }
+		);
+
+		// before hydration, Enter on a focused button: a keydown, then a click with detail 0
+		for (const id of ['handled', 'plain']) {
+			const button = /** @type {HTMLElement} */ (document.querySelector(`#${id}`));
+			button.dispatchEvent(
+				new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+			);
+			button.dispatchEvent(new window.MouseEvent('click', { detail: 0, bubbles: true }));
+		}
+
+		/** @type {string[]} */
+		const log = [];
+		const handled = /** @type {HTMLElement} */ (document.querySelector('#handled'));
+		const plain = /** @type {HTMLElement} */ (document.querySelector('#plain'));
+
+		// e.g. a switch that toggles on Enter and cancels it, so the browser doesn't click it too
+		handled.addEventListener('keydown', (event) => {
+			event.preventDefault();
+			log.push('handled toggled');
+		});
+		handled.addEventListener('click', () => log.push('handled toggled'));
+		plain.addEventListener('click', () => log.push('plain clicked'));
+
+		dispatch(take());
+		expect(log).toEqual(['handled toggled', 'plain clicked']);
 	});
 
 	test('replays key events whatever text changed on the page', () => {
