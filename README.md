@@ -125,6 +125,16 @@ npm run check
 
 The inline script's source is [`src/script/capture.js`](src/script/capture.js). `npm run generate` minifies it into `src/lib/generated/script.js` and computes its CSP hash; a unit test fails if the generated file is out of date. The e2e tests hold back SvelteKit's client JavaScript to simulate a slow network and click around before the page hydrates. The demo app runs with a strict CSP, so they also verify `SCRIPT_HASH`.
 
+## Releasing
+
+Releases are automated with [release-please](https://github.com/googleapis/release-please):
+
+1. Write commit messages on `main` as [Conventional Commits](https://www.conventionalcommits.org/). `fix:`, `feat:` and `perf:` produce a release, and `feat!:` or a `BREAKING CHANGE:` footer marks a breaking one. `docs:`, `chore:`, `ci:`, `test:` and `refactor:` don't release anything on their own.
+2. After every push to `main`, release-please opens or updates a release PR that bumps the version in `package.json` and adds the changes to `CHANGELOG.md`.
+3. Merging the release PR tags the version, creates a GitHub release, runs the unit tests and publishes to npm with [trusted publishing](https://docs.npmjs.com/trusted-publishers) — no npm token involved, and the package gets a provenance attestation.
+
+Until 1.0, a breaking change bumps the minor version (`0.1.0` → `0.2.0`), and features and fixes bump the patch version (`0.1.0` → `0.1.1`). To release a specific version, add a `Release-As: x.y.z` footer to a commit.
+
 ## License
 
 MIT
