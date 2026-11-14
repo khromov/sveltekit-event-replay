@@ -40,8 +40,25 @@
 		pending = 'data-replay-pending';
 	}
 
-	// Elements that are clicked as a whole: clicks anywhere inside one count as clicks on it
-	const clickable = 'button,[role="button"],[tabindex]:not([tabindex^="-"])';
+	/**
+	 * Elements that are clicked as a whole: clicks anywhere inside one count as clicks on it. Widget
+	 * roles rather than `tabindex`, which scroll containers like code blocks have too
+	 * @param {Element} element
+	 */
+	const clickable = (element) =>
+		element.localName === 'button' ||
+		/^(button|checkbox|link|menuitem\w*|option|radio|switch|tab|treeitem)$/.test(
+			element.getAttribute('role') ?? ''
+		);
+
+	/** @param {Element} target */
+	const clicked = (target) => {
+		for (let element = /** @type {Element | null} */ (target); element;) {
+			if (clickable(element)) return element;
+			element = element.parentElement;
+		}
+		return target;
+	};
 
 	/**
 	 * Whether the browser already did something with this click (navigating, toggling, focusing,
@@ -90,7 +107,7 @@
 
 		if (event.type === 'click') {
 			if (native(target)) return;
-			key = target.closest(clickable) ?? target;
+			key = clicked(target);
 		}
 
 		if (held) event.stopImmediatePropagation();
@@ -104,16 +121,31 @@
 			return;
 		}
 
-		// nobody clicks 100 things in a few seconds on purpose
-		if (queue.length >= 100) return;
+		// generous enough for a sentence typed with `input` and `keydown` on, and then some clicks
+		if (queue.length >= 500) return;
 
-		// the text is compared before replaying: if hydration changed it, the element may no longer
-		// mean what the user clicked (e.g. a reordered list, or "Follow" that turned into "Unfollow")
-		queue.push({ event, key, text: key.textContent });
+		/** @type {import('../lib/types.js').CapturedEvent} */
+		const item = { event, key, text: null };
+
+		if (event.type === 'click') {
+			// the text is compared before replaying: if it changed, the element may no longer mean
+			// what the user clicked (a reordered list, "Follow" that turned into "Unfollow"). Not for
+			// <body> and <html>, whose text changes whenever anything on the page does
+			if (key !== document.body && key !== document.documentElement) item.text = key.textContent;
+		} else if (/^(input|select|textarea)$/.test(target.localName)) {
+			// what the field held at this point, put back before replaying: hydration may reset it to
+			// what the server rendered (a <select> with `value={...}`), and handlers read it
+			// (a file input's value can't be set, and a multiple <select> has more than one)
+			const field = /** @type {HTMLInputElement} */ (target);
+			if (field.type !== 'file' && !field.multiple) item.value = field.value;
+			item.checked = field.checked;
+		}
+
+		queue.push(item);
 
 		// only mark interactive elements — marking e.g. <main> after a click on empty space would
 		// restyle the whole page
-		if (pending && key.matches(`${clickable},input,select,textarea`)) {
+		if (pending && (clickable(key) || /^(input|select|textarea)$/.test(key.localName))) {
 			key.setAttribute(pending, '');
 		}
 	};

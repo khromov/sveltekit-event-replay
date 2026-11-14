@@ -2,7 +2,7 @@
 
 SvelteKit renders your pages on the server, so they show up before the JavaScript that makes them interactive has loaded. A click on a `<button onclick={...}>` in that window does nothing, and the user has to click again.
 
-`sveltekit-event-replay` adds a tiny inline script (~860 bytes gzipped) to `<head>` that remembers those clicks, and replays them once SvelteKit has hydrated the page.
+`sveltekit-event-replay` adds a tiny inline script (~1 kB gzipped) to `<head>` that remembers those clicks, and replays them once SvelteKit has hydrated the page.
 
 Try the demo at [khromov.github.io/sveltekit-event-replay](https://khromov.github.io/sveltekit-event-replay/).
 
@@ -34,9 +34,9 @@ That's it. A click on any element before hydration is replayed after it, on the 
 
 ### What gets replayed
 
-- **Repeated clicks count once.** An impatient user who clicks "Buy" three times while the page loads gets one purchase, not three. Clicks anywhere inside a `<button>`, `[role="button"]` or focusable element (`[tabindex]`) count as clicks on it. Turn this off with `dedupe={false}`.
+- **Repeated clicks count once.** An impatient user who clicks "Buy" three times while the page loads gets one purchase, not three. Clicks anywhere inside a `<button>` or an element with a widget role (`button`, `tab`, `menuitem`, `option`, `switch`, `checkbox`…) count as clicks on it. Turn this off with `dedupe={false}`.
 - **Things the browser already handled are left alone.** Links, form controls (checkboxes, inputs, selects...), labels with a control, `<summary>`, popover and command buttons (`popovertarget`, `commandfor`) and a form's submit/reset buttons all work without JavaScript, so replaying a click on them would do it twice. They're never captured, and neither are `submit` events.
-- **Clicks on elements that changed are dropped.** If an element is disabled by the time it's replayed, or hydration changed its text (a reordered list, a "Follow" button that turned into "Unfollow"), the click no longer means what the user clicked, so it's skipped.
+- **Clicks on elements that changed are dropped.** If a clicked element is disabled by the time it's replayed, or its text changed in the meantime, through hydration or code in `onMount` (a reordered list, a "Follow" button that turned into "Unfollow", a keyboard hint added on the client), the click may no longer mean what the user clicked, so it's skipped.
 - **Opt out** of specific elements with `data-no-replay` (it applies to descendants too):
 
   ```svelte
@@ -56,14 +56,14 @@ That's it. A click on any element before hydration is replayed after it, on the 
 
 ## Options
 
-| Prop       | Default                 | Description                                                                                                                                                                             |
-| ---------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `events`   | `['click']`             | Event types to capture. Add `'input'` and/or `'change'` to also run `oninput`/`onchange` handlers for fields edited before hydration. `'change'` also keeps radio `bind:group` in sync. |
-| `dedupe`   | `true`                  | Replay at most one click per element. Other event types (keys, input...) are always replayed in full.                                                                                   |
-| `ignore`   | `'[data-no-replay]'`    | CSS selector for elements (and their descendants) that are never captured. `false` captures everything.                                                                                 |
-| `pending`  | `'data-replay-pending'` | Attribute set on interactive elements while their event waits to be replayed. `false` to disable. Pick a name your elements don't otherwise use: it's removed on replay.                |
-| `timeout`  | `10000`                 | Milliseconds to wait for hydration before dropping captured events. `0` (or less) waits forever.                                                                                        |
-| `onreplay` | —                       | `(events: Event[]) => void`, called once after hydration with the events that were replayed (an empty array if there were none) — handy for analytics.                                  |
+| Prop       | Default                 | Description                                                                                                                                                                                                                                                                     |
+| ---------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `events`   | `['click']`             | Event types to capture. Add `'input'` and/or `'change'` to also run `oninput`/`onchange` handlers for fields edited before hydration. Fields get back the value they had when the event happened, so `'change'` also restores a `<select>` or radio group that hydration reset. |
+| `dedupe`   | `true`                  | Replay at most one click per element. Other event types (keys, input...) are always replayed in full, so a shortcut pressed twice runs twice.                                                                                                                                   |
+| `ignore`   | `'[data-no-replay]'`    | CSS selector for elements (and their descendants) that are never captured. `false` captures everything.                                                                                                                                                                         |
+| `pending`  | `'data-replay-pending'` | Attribute set on interactive elements while their event waits to be replayed. `false` to disable. Pick a name your elements don't otherwise use: it's removed on replay.                                                                                                        |
+| `timeout`  | `10000`                 | Milliseconds to wait for hydration before dropping captured events. `0` (or less) waits forever.                                                                                                                                                                                |
+| `onreplay` | —                       | `(events: Event[]) => void`, called once after hydration with the events that were replayed (an empty array if there were none) — handy for analytics.                                                                                                                          |
 
 ```svelte
 <EventReplay
@@ -73,7 +73,7 @@ That's it. A click on any element before hydration is replayed after it, on the 
 />
 ```
 
-The options except `onreplay` are read once, when the page is rendered on the server. Invalid values (a malformed `ignore` selector, say) fall back to the defaults, and at most 100 events are kept.
+The options except `onreplay` are read once, when the page is rendered on the server. Invalid values (a malformed `ignore` selector, say) fall back to the defaults, and at most 500 events are kept. With `'input'` and `'keydown'` both on, each keystroke counts twice.
 
 ## Content Security Policy
 
@@ -102,8 +102,9 @@ Import it from `sveltekit-event-replay/script`, which Node can load (the main en
 - **Replayed events are synthetic** (`event.isTrusted === false`), which matters for browser APIs that need a user gesture. See [Replayed events and `isTrusted`](#replayed-events-and-istrusted).
 - **Native behaviour isn't upgraded.** A link clicked before hydration performs a regular full-page navigation, and a form submits natively, exactly as without this package. An `onclick` on those elements doesn't run for clicks made before hydration. Use [form actions](https://svelte.dev/docs/kit/form-actions) and real links to keep them working without JavaScript.
 - **Replay happens right after hydration.** Listeners added later, say after an `await` or in a `setTimeout` in `onMount`, miss it.
-- **Clickable `<div>`s without `role` or `tabindex`** can't be told apart before hydration, so dedupe treats clicks on different parts of one as different clicks. Give them `role="button"` and `tabindex="0"` (which accessibility asks for anyway).
-- **`<select bind:value>` is reset by Svelte's hydration** to the value it rendered on the server, and replaying `change` can't bring the user's choice back.
+- **Clickable `<div>`s without a widget role** can't be told apart before hydration, so dedupe treats clicks on different parts of one as different clicks. Give them `role="button"` and `tabindex="0"` (which accessibility asks for anyway).
+- **Listeners that are already running before hydration**, like an analytics script or a plain-JavaScript widget loaded with `defer`, get the real click and then its replay. Add `data-no-replay` to elements they handle, or skip replays in global listeners with [`isReplayed(event)`](#replayed-events-and-istrusted).
+- **Hydration resets some fields to what the server rendered**: a `<select>` with `bind:value` or `value={...}`, a radio group with `bind:group`, and `<details bind:open>`. With `'change'` in `events`, the replay puts a select's or radio group's value back before running your handlers. A `<details>` the user opened stays closed.
 - **Hydration mismatches.** If Svelte replaces an element during hydration, there's nothing to replay its click on, and it's skipped.
 - **Only on the first page load, and only once per page.** Client-side navigations don't need it. If you render `<EventReplay>` twice, the first one's options win.
 

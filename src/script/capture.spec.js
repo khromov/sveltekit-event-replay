@@ -189,19 +189,37 @@ describe('capture', () => {
 		expect(stop()).toEqual([]);
 	});
 
-	test('treats clicks inside a focusable element as clicks on it', () => {
+	test('treats clicks inside an element with a widget role as clicks on it', () => {
 		const { document, click, stop } = setup(
-			'<div id="card" tabindex="0"><h3 id="title">t</h3><p id="text">x</p></div>' +
+			'<div id="card" role="button" tabindex="0"><h3 id="title">t</h3><p id="text">x</p></div>' +
+				'<div role="tablist"><div id="tab" role="tab" tabindex="-1"><i id="icon">i</i> <span id="label">Tab</span></div></div>' +
 				'<main tabindex="-1"><p id="loose">y</p></main>'
 		);
 		click('#title');
 		click('#text');
+		click('#icon');
+		click('#label');
 		click('#loose');
 		expect(stop()).toEqual([
 			{ type: 'click', key: 'card' },
+			{ type: 'click', key: 'tab' },
 			{ type: 'click', key: 'loose' }
 		]);
 		expect(document.querySelector('#card')?.hasAttribute('data-replay-pending')).toBe(true);
+		expect(document.querySelector('#tab')?.hasAttribute('data-replay-pending')).toBe(true);
+	});
+
+	test('treats a focusable element without a widget role, like a code block, as content', () => {
+		const { document, click, stop } = setup(
+			'<pre id="code" tabindex="0"><span id="a">let</span> <span id="b">x</span></pre>'
+		);
+		click('#a');
+		click('#b');
+		expect(stop()).toEqual([
+			{ type: 'click', key: 'a' },
+			{ type: 'click', key: 'b' }
+		]);
+		expect(document.querySelector('[data-replay-pending]')).toBe(null);
 	});
 
 	test('only marks interactive elements as pending', () => {
@@ -283,10 +301,10 @@ describe('capture', () => {
 		expect(stop()).toHaveLength(1);
 	});
 
-	test('caps the queue at 100 events', () => {
+	test('caps the queue at 500 events', () => {
 		const { click, stop } = setup('<button id="a">a</button>', { dedupe: false });
 		for (let i = 0; i < 1000; i++) click('#a');
-		expect(stop()).toHaveLength(100);
+		expect(stop()).toHaveLength(500);
 	});
 
 	test('falls back to the defaults when the config is malformed', () => {
@@ -417,6 +435,62 @@ describe('dispatch', () => {
 		expect(dispatch(take())).toHaveLength(1);
 		expect(log).toEqual(['buy']);
 		expect(document.querySelector('[data-replay-pending]')).toBe(null);
+	});
+
+	test('replays key events whatever text changed on the page', () => {
+		const { window, document, take } = setup('<p id="theme">Dark</p>', {
+			events: ['click', 'keydown']
+		});
+
+		// nothing focused: the shortcut lands on <body>, and a click on empty space too
+		document.body.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'k', bubbles: true }));
+		document.body.click();
+
+		// hydration (or onMount) relabels something somewhere on the page
+		/** @type {HTMLElement} */ (document.querySelector('#theme')).textContent = 'Light';
+
+		/** @type {string[]} */
+		const seen = [];
+		document.addEventListener('keydown', (event) => seen.push(event.key));
+		document.addEventListener('click', () => seen.push('click'));
+
+		expect(dispatch(take())).toHaveLength(2);
+		expect(seen).toEqual(['k', 'click']);
+	});
+
+	test('puts back the value a field had, in case hydration reset it', () => {
+		const { window, document, take } = setup(
+			'<select id="lang"><option>en</option><option>de</option></select>' +
+				'<input id="agree" type="checkbox"><input id="file" type="file">',
+			{ events: ['click', 'change'] }
+		);
+		const lang = /** @type {HTMLSelectElement} */ (document.querySelector('#lang'));
+		const agree = /** @type {HTMLInputElement} */ (document.querySelector('#agree'));
+		const file = /** @type {HTMLInputElement} */ (document.querySelector('#file'));
+
+		// the user picks before hydration
+		lang.value = 'de';
+		lang.dispatchEvent(new window.Event('change', { bubbles: true }));
+		agree.checked = true;
+		agree.dispatchEvent(new window.Event('change', { bubbles: true }));
+		file.dispatchEvent(new window.Event('change', { bubbles: true }));
+
+		// hydration renders what the server did, e.g. `value={lang}` with lang = 'en'
+		lang.value = 'en';
+		agree.checked = false;
+
+		/** @type {unknown[]} */
+		const seen = [];
+		lang.addEventListener('change', () => seen.push(lang.value));
+		agree.addEventListener('change', () => seen.push(agree.checked));
+
+		const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+		expect(dispatch(take())).toHaveLength(3);
+		expect(error).not.toHaveBeenCalled();
+		error.mockRestore();
+
+		expect(seen).toEqual(['de', true]);
+		expect(lang.value).toBe('de');
 	});
 
 	test('skips elements whose text changed during hydration', () => {

@@ -55,19 +55,23 @@ export function dispatch(taken) {
 	if (!taken) return dispatched;
 
 	// Compare texts before replaying anything — replayed handlers may change them on purpose
-	// (a button showing a count). A text that hydration changed means the element may no longer
-	// mean what the user clicked: a reordered list, or "Follow" that turned into "Unfollow"
-	const changed = taken.captured.map(({ key, text }) => key.textContent !== text);
+	// (a button showing a count). A click whose element's text changed in the meantime may no
+	// longer mean what the user clicked: a reordered list, or "Follow" that turned into "Unfollow"
+	const changed = taken.captured.map(({ key, text }) => text !== null && key.textContent !== text);
 
-	for (const [index, { event, key }] of taken.captured.entries()) {
+	for (const [index, { event, key, value, checked }] of taken.captured.entries()) {
 		if (taken.pending) key.removeAttribute(taken.pending);
 
-		const target = /** @type {Element} */ (event.target);
+		const target = /** @type {HTMLInputElement} */ (event.target);
 
 		// Skip events whose element hydration replaced (e.g. after a mismatch), changed, or disabled
 		if (!target.isConnected || changed[index] || target.closest(':disabled')) continue;
 
 		try {
+			// put back what the field held when the event happened, in case hydration reset it
+			if (value !== undefined && target.value !== value) target.value = value;
+			if (checked !== undefined && target.checked !== checked) target.checked = checked;
+
 			// the event init dictionaries (MouseEventInit, InputEventInit...) read their fields off the original
 			const EventConstructor = /** @type {new (type: string, init: Event) => Event} */ (
 				event.constructor

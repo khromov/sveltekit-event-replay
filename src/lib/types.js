@@ -27,7 +27,10 @@
  * @typedef {object} CapturedEvent
  * @property {Event} event The original event, as the browser dispatched it before hydration
  * @property {Element} key The element the event is attributed to (used for dedupe and `pending`)
- * @property {string | null} text The key's text when it was captured, compared before replaying
+ * @property {string | null} text For clicks, the key's text when it was captured, compared before
+ * replaying
+ * @property {string} [value] For events on form fields, the field's value when it was captured
+ * @property {boolean} [checked] For events on form fields, whether it was checked when captured
  */
 
 /**
