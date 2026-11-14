@@ -83,7 +83,7 @@ That's it. A click on any element before hydration is replayed after it, on the 
 />
 ```
 
-The options except `onreplay` are read once, when the page is rendered on the server. Invalid values (a malformed `ignore` selector, say) fall back to the defaults, and at most 500 events are kept: later ones are dropped. With `'input'` and `'keydown'` both on, each keystroke counts twice.
+The options except `onreplay` are read once, when the page is rendered on the server. Invalid values (a malformed `ignore` selector, say) fall back to the defaults, and at most 500 events are kept: later ones are dropped. Each key press counts as one with `'keydown'` on, while only the latest `input` event per field is kept, since handlers read the field's value.
 
 ## Content Security Policy
 

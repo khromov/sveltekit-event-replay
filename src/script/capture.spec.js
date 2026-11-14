@@ -161,20 +161,33 @@ describe('capture', () => {
 		expect(none.document.querySelector('#a')?.attributes).toHaveLength(1);
 	});
 
-	test('captures every event of other types, without the native-element filter', () => {
-		const { window, document, click, stop } = setup('<input id="t"><button id="b">b</button>', {
-			events: ['click', 'input']
-		});
+	test('captures other event types, without the native-element filter', () => {
+		const { window, document, click, stop } = setup(
+			'<input id="t"><button id="b">b</button><button id="c">c</button>',
+			{ events: ['click', 'input', 'keydown'] }
+		);
 		const input = /** @type {HTMLInputElement} */ (document.querySelector('#t'));
-		input.value = 'a';
-		input.dispatchEvent(new window.InputEvent('input', { bubbles: true }));
-		input.value = 'ab';
-		input.dispatchEvent(new window.InputEvent('input', { bubbles: true }));
+		const key = () =>
+			input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'a', bubbles: true }));
+		const type = (/** @type {string} */ value) => {
+			input.value = value;
+			input.dispatchEvent(new window.InputEvent('input', { bubbles: true }));
+		};
+
+		key();
+		type('a');
 		click('#b');
+		key();
+		type('ab');
+		click('#c');
+
+		// every key press, but only the latest input per field, where it happened last
 		expect(stop()).toEqual([
+			{ type: 'keydown', key: 't' },
+			{ type: 'click', key: 'b' },
+			{ type: 'keydown', key: 't' },
 			{ type: 'input', key: 't' },
-			{ type: 'input', key: 't' },
-			{ type: 'click', key: 'b' }
+			{ type: 'click', key: 'c' }
 		]);
 	});
 

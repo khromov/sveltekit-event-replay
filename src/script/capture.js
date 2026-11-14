@@ -124,7 +124,14 @@
 			return;
 		}
 
-		// generous enough for a sentence typed with `input` and `keydown` on, and then some clicks
+		// Only the latest `input` per field is kept: handlers read the field's value, and replaying
+		// every keystroke would run them with each half-typed value in turn (a search filtering a list
+		// down to nothing and back, removing the button the user clicked next)
+		if (event.type === 'input') {
+			queue = queue.filter((item) => item.event.type !== 'input' || item.event.target !== target);
+		}
+
+		// generous enough for a sentence typed with `keydown` on, and then some clicks
 		if (queue.length >= 500) return;
 
 		/** @type {import('../lib/types.js').CapturedEvent} */
