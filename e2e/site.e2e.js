@@ -206,3 +206,41 @@ test('items added to the cart fly into the cart icon', async ({ page }) => {
 	await expect(page.locator('.cart b')).toHaveText('1');
 	await expect(page.locator('.thumb.flying')).toHaveCount(0);
 });
+
+test('a mode picked before the site hydrates sticks', async ({ page }) => {
+	// hold back SvelteKit's client JavaScript, like replay.e2e.js does
+	await page.route(/\/_app\/immutable\/.*\.js$/, async (route) => {
+		await new Promise((fulfil) => setTimeout(fulfil, 1500));
+		await route.continue();
+	});
+
+	await page.goto('/', { waitUntil: 'domcontentloaded' });
+	const standard = page.getByRole('radio', { name: /^Standard SvelteKit/ });
+	await standard.check();
+
+	// hydration renders the default mode, and the replayed change switches back to the one picked
+	await expect(page.getByRole('button', { name: 'Reload' })).toBeVisible(HYDRATED);
+	await expect(standard).toBeChecked();
+	await expect(page.getByRole('radio', { name: /^With EventReplay/ })).not.toBeChecked();
+});
+
+test('nothing the pretend mouse had planned happens after the visitor takes over', async ({
+	page
+}) => {
+	await page.setViewportSize({ width: 1280, height: 400 });
+	await page.goto('/');
+	await page.locator('.demo').evaluate((demo) => demo.scrollIntoView({ block: 'start' }));
+	await expect(page.locator('.demo .mouse')).toHaveClass(/touring/);
+
+	// take over in the middle of its first run, and pick the other mode
+	await expect(page.getByText('3 clicks on 2 buttons')).toBeVisible(HYDRATED);
+	const standard = page.getByRole('radio', { name: /^Standard SvelteKit/ });
+	await standard.check();
+	await expect(page.locator('.demo .mouse')).not.toHaveClass(/touring/);
+
+	// a whole run of the pretend mouse later, the visitor's choice stands
+	await page.mouse.move(5, 5);
+	await page.waitForTimeout(15_000);
+	await expect(standard).toBeChecked();
+	await expect(page.locator('[data-tour="status"]')).toContainText('Hydrated');
+});

@@ -8,6 +8,8 @@
 	let { children } = $props();
 </script>
 
-<EventReplay />
+<!-- 'change' too: hydration resets the demo's mode radios to the default, and replaying a
+     change made before hydration switches the demo to the mode that was picked -->
+<EventReplay events={['click', 'change']} />
 
 {@render children()}
