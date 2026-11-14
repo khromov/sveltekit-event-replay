@@ -57,6 +57,17 @@ test('replays a click on a delegated onclick handler', async ({ page }) => {
 	await expect(page.locator('#replayed')).toHaveText('Replayed 1 event after hydration: click');
 });
 
+test('isReplayed() is true for the replayed click only', async ({ page }) => {
+	await goto_slow(page, '/fixtures/default');
+	await page.click('#delegated');
+	await replayed(page);
+	await expect(page.locator('#delegated-replayed')).toHaveText('true');
+
+	await page.click('#delegated');
+	await expect(page.locator('#delegated-count')).toHaveText('2');
+	await expect(page.locator('#delegated-replayed')).toHaveText('false');
+});
+
 test('replays repeated clicks on the same element once', async ({ page }) => {
 	await goto_slow(page, '/fixtures/default');
 	await page.click('#delegated');

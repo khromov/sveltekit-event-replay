@@ -99,7 +99,7 @@ Import it from `sveltekit-event-replay/script`, which Node can load (the main en
 
 ## Caveats
 
-- **Replayed events are synthetic** (`event.isTrusted === false`). APIs that require a user gesture (`window.open` popups, clipboard writes, fullscreen) only work if the original click's activation is still fresh, which lasts a few seconds, and only for the first such call.
+- **Replayed events are synthetic** (`event.isTrusted === false`), which matters for browser APIs that need a user gesture. See [Replayed events and `isTrusted`](#replayed-events-and-istrusted).
 - **Native behaviour isn't upgraded.** A link clicked before hydration performs a regular full-page navigation, and a form submits natively, exactly as without this package. An `onclick` on those elements doesn't run for clicks made before hydration. Use [form actions](https://svelte.dev/docs/kit/form-actions) and real links to keep them working without JavaScript.
 - **Replay happens right after hydration.** Listeners added later, say after an `await` or in a `setTimeout` in `onMount`, miss it.
 - **Clickable `<div>`s without `role` or `tabindex`** can't be told apart before hydration, so dedupe treats clicks on different parts of one as different clicks. Give them `role="button"` and `tabindex="0"` (which accessibility asks for anyway).
@@ -132,6 +132,32 @@ onMount(() => {
 	replay();
 });
 ```
+
+## Replayed events and `isTrusted`
+
+A replayed event is dispatched from JavaScript, so its `isTrusted` is `false`. No library can change that: browsers only mark the events they create from real input as trusted.
+
+Most code never looks at it. Svelte's `onclick` handlers, `addEventListener` listeners, state updates, `fetch`, remote functions and `goto()` all behave as they would for a real click. Two kinds of code do care:
+
+- **Browser APIs that need a user gesture**, like `window.open` popups, clipboard writes, fullscreen, `<video>` playback with sound, `showPicker()` and `navigator.share()`. They check for user activation, which a replayed event doesn't grant. The real click made before hydration does grant it, for a few seconds, so on a page that hydrates quickly these calls often still work during the replay, and after a slow load they fail. Some of them also use the activation up, so only the first such call succeeds.
+- **Code that checks `event.isTrusted` itself**, such as bot detection or some analytics scripts, ignores replayed events.
+
+For elements whose click must come from a real gesture, add `data-no-replay` so their clicks aren't captured at all, or check `isReplayed(event)` in the handler and let the user click again:
+
+```js
+import { isReplayed } from 'sveltekit-event-replay';
+
+async function copy(event) {
+	if (isReplayed(event)) {
+		hint = 'Click again to copy';
+		return;
+	}
+
+	await navigator.clipboard.writeText(code);
+}
+```
+
+`isReplayed` also lets analytics tell replayed clicks apart.
 
 ## Why not an existing library?
 

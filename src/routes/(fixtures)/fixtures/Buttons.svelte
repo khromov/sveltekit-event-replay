@@ -1,8 +1,11 @@
 <script>
 	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
+	import { isReplayed } from '#lib';
 
 	let delegated = $state(0);
+	/** @type {boolean | null} whether the last click on #delegated was a replay */
+	let delegated_replayed = $state(null);
 	let nested = $state(0);
 	let listener = $state(0);
 	let ignored = $state(0);
@@ -32,8 +35,17 @@
 	<h2>Replayed</h2>
 
 	<p>
-		<button id="delegated" onclick={() => delegated++}>Delegated <code>onclick</code></button>
+		<button
+			id="delegated"
+			onclick={(event) => {
+				delegated++;
+				delegated_replayed = isReplayed(event);
+			}}
+		>
+			Delegated <code>onclick</code>
+		</button>
 		<output id="delegated-count">{delegated}</output>
+		<output id="delegated-replayed">{delegated_replayed}</output>
 	</p>
 
 	<p>

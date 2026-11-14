@@ -1,6 +1,32 @@
 /** @import { CapturedEvent } from './types.js' */
 import { flushSync } from 'svelte';
 
+/** The events this package has dispatched. A WeakSet, so it never keeps an event alive */
+const replayed = new WeakSet();
+
+/**
+ * Whether `event` is a replay of an interaction made before the page hydrated, rather than one the
+ * browser dispatched just now.
+ *
+ * Replayed events are synthetic (`event.isTrusted` is `false`), so a handler that needs a real user
+ * gesture, like opening a popup or writing to the clipboard, can check this and skip the replay,
+ * letting the user click again.
+ *
+ * @example
+ * ```js
+ * function share(event) {
+ * 	if (isReplayed(event)) return;
+ * 	navigator.share({ url: location.href });
+ * }
+ * ```
+ *
+ * @param {Event} event
+ * @returns {boolean}
+ */
+export function isReplayed(event) {
+	return replayed.has(event);
+}
+
 /**
  * Stops the inline capture script and hands over what it captured. Returns `null` if the script
  * never ran (client-side rendered page, already replayed...).
@@ -48,6 +74,7 @@ export function dispatch(taken) {
 			);
 			const copy = new EventConstructor(event.type, event);
 
+			replayed.add(copy);
 			target.dispatchEvent(copy);
 			dispatched.push(copy);
 

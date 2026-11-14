@@ -1,7 +1,7 @@
 import { JSDOM, VirtualConsole } from 'jsdom';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { SCRIPT } from '../lib/generated/script.js';
-import { dispatch, replay } from '../lib/replay.js';
+import { dispatch, isReplayed, replay } from '../lib/replay.js';
 
 /**
  * Renders `body` with the capture script in <head>, the way `<EventReplay>` does.
@@ -309,6 +309,22 @@ describe('capture', () => {
 });
 
 describe('dispatch', () => {
+	test('isReplayed() tells replayed events from ones the browser dispatched', () => {
+		const { document, click, take } = setup('<button id="a">a</button>');
+		click('#a'); // before hydration: captured
+
+		/** @type {boolean[]} */
+		const seen = [];
+		document
+			.querySelector('#a')
+			?.addEventListener('click', (event) => seen.push(isReplayed(event)));
+
+		dispatch(take());
+		click('#a'); // after hydration: an ordinary click
+
+		expect(seen).toEqual([true, false]);
+	});
+
 	test('re-dispatches captured events on their targets and clears pending markers', () => {
 		const { window, document, click } = setup('<button id="a"><span id="icon">★</span></button>');
 		click('#icon');
