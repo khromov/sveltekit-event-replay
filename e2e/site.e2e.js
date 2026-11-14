@@ -51,6 +51,8 @@ test('the demo replays clicks with the package, once per button', async ({ page 
 	const like = page.getByRole('button', { name: 'Like' });
 	const gift_wrap = page.getByRole('checkbox', { name: 'Gift wrap' });
 
+	// reaching for the demo loads its mock page, which starts out blank
+	await page.locator('.demo').hover();
 	await page.getByRole('button', { name: 'Reload' }).click();
 	await add.click();
 	await add.click();
@@ -89,6 +91,9 @@ test('the demo works with the keyboard', async ({ page }) => {
 });
 
 test('the website replays a real click made before it hydrates', async ({ page }) => {
+	// a short window keeps the demo out of view, so the pretend mouse doesn't load it instead
+	await page.setViewportSize({ width: 1280, height: 400 });
+
 	// hold back SvelteKit's client JavaScript, like replay.e2e.js does
 	await page.route(/\/_app\/immutable\/.*\.js$/, async (route) => {
 		await new Promise((fulfil) => setTimeout(fulfil, 1500));
@@ -97,13 +102,90 @@ test('the website replays a real click made before it hydrates', async ({ page }
 
 	await page.goto('/', { waitUntil: 'domcontentloaded' });
 
-	// the inline script marks the button...
-	const add = page.getByRole('button', { name: 'Add to cart' });
-	await add.click();
-	await expect(add).toHaveAttribute('data-replay-pending', '');
+	// the demo's mock page starts out blank, and the inline script marks the Load button...
+	const load = page.getByRole('button', { name: 'Load' });
+	await load.click();
+	await expect(load).toHaveAttribute('data-replay-pending', '');
 
-	// ...and <EventReplay> replays the click into the demo, whose mock page is still loading
-	await expect(page.getByText('1 click on 1 button')).toBeVisible(HYDRATED);
-	await expect(page.getByText('1 in cart')).toBeVisible(HYDRATED);
-	await expect(page.getByText('1 replayed')).toBeVisible();
+	// (step away, so the demo doesn't load itself for a visitor resting on it)
+	await page.mouse.move(0, 0);
+	await page.evaluate(() => scrollTo(0, 0));
+
+	// ...and <EventReplay> replays the click once the site has hydrated, which loads the mock page
+	await expect(page.getByRole('button', { name: 'Reload' })).toBeVisible(HYDRATED);
+	await expect(page.getByRole('button', { name: 'Add to cart' })).toBeVisible();
+	await expect(page.locator('[data-replay-pending]')).toHaveCount(0);
+});
+
+test('the demo starts blank and loads when the visitor reaches for it', async ({ page }) => {
+	await page.setViewportSize({ width: 1280, height: 400 });
+	await page.goto('/');
+
+	await expect(page.getByRole('button', { name: 'Load' })).toBeVisible();
+	await expect(page.locator('[data-tour="status"]')).toHaveText('Idle');
+	await expect(page.getByRole('button', { name: 'Add to cart' })).toBeHidden();
+
+	await page.locator('.demo').hover();
+	await expect(page.getByRole('button', { name: 'Reload' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Add to cart' })).toBeVisible();
+	await expect(page.locator('[data-tour="status"]')).toHaveText('Loading JavaScript…');
+});
+
+test('a ring follows the mouse over the header', async ({ page }) => {
+	await page.goto('/');
+	const ring = page.locator('.ring');
+	const opacity = () => ring.evaluate((element) => Number(getComputedStyle(element).opacity));
+
+	// keep moving, like a visitor would, until the page has hydrated and the ring picks it up
+	await expect(async () => {
+		await page.mouse.move(400, 150);
+		await page.mouse.move(410, 160);
+		expect(await opacity()).toBeGreaterThan(0);
+	}).toPass();
+
+	// it settles centred on the pointer
+	await expect
+		.poll(async () => {
+			const box = /** @type {{ x: number, y: number, width: number, height: number }} */ (
+				await ring.boundingBox()
+			);
+			return Math.hypot(box.x + box.width / 2 - 410, box.y + box.height / 2 - 160);
+		})
+		.toBeLessThan(2);
+
+	// below the header
+	await page.mouse.move(400, 700);
+	await expect.poll(opacity).toBe(0);
+});
+
+test('a pretend mouse plays the demo until the visitor moves over it', async ({ page }) => {
+	// a short window, so the demo starts out of view
+	await page.setViewportSize({ width: 1280, height: 400 });
+	await page.goto('/');
+	await expect(page.getByRole('button', { name: 'Load' })).toBeVisible();
+	const mouse = page.locator('.demo .mouse');
+	await expect(mouse).not.toHaveClass(/touring/);
+
+	// it starts once the demo scrolls into view...
+	await page.locator('.demo').evaluate((demo) => demo.scrollIntoView({ block: 'start' }));
+	await expect(mouse).toHaveClass(/touring/);
+
+	// ...clicks Load, Add to cart twice and Like while the mock page loads, and they're replayed
+	await expect(page.getByText('3 clicks on 2 buttons')).toBeVisible(HYDRATED);
+	await expect(page.getByText('2 replayed')).toBeVisible(HYDRATED);
+
+	// reaching for the demo puts the pretend mouse away for good
+	const box = /** @type {{ x: number, y: number }} */ (await page.locator('.demo').boundingBox());
+	await page.mouse.move(box.x + 20, box.y + 20);
+	await expect(mouse).not.toHaveClass(/touring/);
+});
+
+test('the pretend mouse stays away when the demo is used with the keyboard', async ({ page }) => {
+	await page.setViewportSize({ width: 1280, height: 400 });
+	await page.goto('/');
+	await page.getByRole('button', { name: 'Load' }).focus();
+	await expect(page.getByRole('button', { name: 'Reload' })).toBeVisible();
+	await page.locator('.demo').evaluate((demo) => demo.scrollIntoView({ block: 'start' }));
+	await page.waitForTimeout(1500);
+	await expect(page.locator('.demo .mouse')).not.toHaveClass(/touring/);
 });

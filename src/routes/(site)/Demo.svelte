@@ -6,6 +6,7 @@ package would (or wouldn't) handle them.
 -->
 <script>
 	import { onMount } from 'svelte';
+	import { tour } from './tour.js';
 
 	/** How long the mock page takes to load its JavaScript */
 	const LOAD_TIME = 5000;
@@ -51,10 +52,60 @@ package would (or wouldn't) handle them.
 	/** @type {Animation | undefined} */
 	let loading;
 
-	// The server-rendered demo is already in its loading state, so the first load only starts the clock
+	/** @type {HTMLElement} */
+	let root;
+
+	/** @type {HTMLElement} */
+	let mouse;
+
+	/** Whether the pretend mouse is playing the demo */
+	let touring = $state(false);
+
+	/** Whether the mock page has been loaded at all. It starts out blank, waiting for "Load" */
+	let loaded = $state(false);
+
 	onMount(() => {
-		start();
-		return () => loading?.cancel();
+		const controller = new AbortController();
+		const stop = () => controller.abort();
+
+		// Once the demo scrolls into view, a pretend mouse plays it, starting with "Load". When the
+		// visitor reaches for the demo, the mouse goes away, and the page loads if it hadn't yet.
+		// Visitors who'd rather not see motion, or already rest their pointer on the demo, get the
+		// loaded page straight away
+		const reached = root.matches(':hover') || root.contains(document.activeElement);
+
+		if (!matchMedia('(prefers-reduced-motion: reduce)').matches && !reached) {
+			const take_over = () => {
+				stop();
+				if (!loaded) reload();
+			};
+
+			for (const type of ['pointerenter', 'pointerdown', 'focusin']) {
+				root.addEventListener(type, take_over, { once: true, signal: controller.signal });
+			}
+
+			const observer = new IntersectionObserver(
+				([entry]) => {
+					if (!entry.isIntersecting) return;
+					observer.disconnect();
+					touring = true;
+					tour(root, mouse, controller.signal)
+						.catch(() => {})
+						.finally(() => (touring = false));
+				},
+				{ rootMargin: '0px 0px -35% 0px' }
+			);
+
+			observer.observe(root);
+			controller.signal.addEventListener('abort', () => observer.disconnect());
+		} else {
+			reload();
+		}
+
+		return () => {
+			loading?.cancel();
+			stop();
+		};
 	});
 
 	function start() {
@@ -67,10 +118,12 @@ package would (or wouldn't) handle them.
 	}
 
 	/**
-	 * Reloads the mock page: its HTML shows up right away, its handlers after `LOAD_TIME`.
+	 * (Re)loads the mock page: its HTML shows up right away, its handlers after `LOAD_TIME`.
 	 * @param {Mode} next
 	 */
 	function reload(next = mode) {
+		loaded = true;
+
 		// a load that was cut short has no outcome to compare
 		if (!hydrated) results[mode] = no_clicks();
 
@@ -137,14 +190,14 @@ package would (or wouldn't) handle them.
 	}
 </script>
 
-<div class="demo">
+<div class="demo" bind:this={root}>
 	<fieldset class="modes">
 		<legend class="visually-hidden">Mock page</legend>
 
 		{#each modes as { value, label } (value)}
 			{@const result = results[value]}
 
-			<label class="mode" class:selected={mode === value}>
+			<label class="mode" class:selected={mode === value} data-tour={value}>
 				<span class="name">
 					<input
 						type="radio"
@@ -179,7 +232,7 @@ package would (or wouldn't) handle them.
 		<div class="toolbar">
 			<span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
 
-			<button type="button" class="reload" onclick={() => reload()}>
+			<button type="button" class="reload" data-tour="reload" onclick={() => reload()}>
 				<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
 					<path
 						d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2v3h-3"
@@ -190,7 +243,7 @@ package would (or wouldn't) handle them.
 						stroke-linejoin="round"
 					/>
 				</svg>
-				Reload
+				{loaded ? 'Reload' : 'Load'}
 			</button>
 
 			<span class="address">shop.example/socks</span>
@@ -200,7 +253,8 @@ package would (or wouldn't) handle them.
 			<div class="bar" class:done={hydrated} bind:this={bar}></div>
 		</div>
 
-		<div class="page" bind:this={content}>
+		<!-- kept in the layout while blank, so the demo doesn't change height when it loads -->
+		<div class="page" class:blank={!loaded} inert={!loaded} bind:this={content}>
 			<p class="product">
 				<span class="thumb" aria-hidden="true"></span>
 				<span><strong>Wool socks</strong><br />$12</span>
@@ -210,6 +264,7 @@ package would (or wouldn't) handle them.
 				<button
 					type="button"
 					class="primary"
+					data-tour="cart"
 					data-replay-pending={pending('cart')}
 					onclick={() => click('cart')}
 				>
@@ -222,7 +277,12 @@ package would (or wouldn't) handle them.
 			</p>
 
 			<p class="action">
-				<button type="button" data-replay-pending={pending('like')} onclick={() => click('like')}>
+				<button
+					type="button"
+					data-tour="like"
+					data-replay-pending={pending('like')}
+					onclick={() => click('like')}
+				>
 					Like
 				</button>
 
@@ -234,22 +294,73 @@ package would (or wouldn't) handle them.
 			<label class="gift"><input type="checkbox" bind:checked={gift_wrap} /> Gift wrap</label>
 		</div>
 
-		<p class="status" class:hydrated role="status">
+		<p class="status" class:idle={!loaded} class:hydrated role="status" data-tour="status">
 			<span class="indicator" aria-hidden="true"></span>
 
-			{#if hydrated}
+			{#if !loaded}
+				Idle
+			{:else if hydrated}
 				Hydrated<span class="visually-hidden">, {outcome}</span>
 			{:else}
 				Loading JavaScript…
 			{/if}
 		</p>
 	</div>
+
+	<!-- the pretend mouse that plays the demo until the visitor reaches for it -->
+	<div class="mouse" class:touring aria-hidden="true" bind:this={mouse}>
+		<span class="pulse"></span>
+		<svg viewBox="0 0 16 22" width="16" height="22">
+			<path d="M1 1v17l4.6-4.3 3 6.8 2.6-1.1-3-6.7H14z" />
+		</svg>
+	</div>
 </div>
 
 <style>
 	.demo {
+		position: relative;
 		display: grid;
 		gap: 0.75rem;
+	}
+
+	.mouse {
+		position: absolute;
+		top: 0;
+		left: 0;
+		z-index: 2;
+		pointer-events: none;
+		opacity: 0;
+		transition:
+			transform 0.7s cubic-bezier(0.45, 0, 0.2, 1),
+			opacity 0.3s;
+	}
+
+	.mouse.touring {
+		opacity: 1;
+	}
+
+	.mouse svg {
+		display: block;
+		margin: -1px 0 0 -1px;
+		filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.25));
+	}
+
+	.mouse path {
+		fill: var(--text);
+		stroke: var(--surface);
+		stroke-width: 1.5;
+		stroke-linejoin: round;
+	}
+
+	.pulse {
+		position: absolute;
+		top: -18px;
+		left: -18px;
+		width: 36px;
+		height: 36px;
+		border: 2px solid var(--accent);
+		border-radius: 50%;
+		opacity: 0;
 	}
 
 	.modes {
@@ -406,6 +517,10 @@ package would (or wouldn't) handle them.
 		padding: 1.25rem;
 	}
 
+	.page.blank {
+		visibility: hidden;
+	}
+
 	.page p {
 		margin: 0;
 	}
@@ -517,6 +632,11 @@ package would (or wouldn't) handle them.
 		border-top-color: var(--accent);
 		border-radius: 50%;
 		animation: spin 0.8s linear infinite;
+	}
+
+	.status.idle .indicator {
+		border-top-color: var(--border);
+		animation: none;
 	}
 
 	.status.hydrated {
