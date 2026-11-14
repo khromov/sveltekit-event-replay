@@ -189,3 +189,17 @@ test('the pretend mouse stays away when the demo is used with the keyboard', asy
 	await page.waitForTimeout(1500);
 	await expect(page.locator('.demo .mouse')).not.toHaveClass(/touring/);
 });
+
+test('items added to the cart fly into the cart icon', async ({ page }) => {
+	await page.setViewportSize({ width: 1280, height: 400 });
+	await page.goto('/');
+	await page.locator('.demo').hover();
+	await expect(page.getByText('Hydrated')).toBeVisible(HYDRATED);
+
+	await page.getByRole('button', { name: 'Add to cart' }).click();
+	await expect(page.locator('.thumb.flying')).toHaveCount(1);
+
+	// the badge counts the item once it lands
+	await expect(page.locator('.cart b')).toHaveText('1');
+	await expect(page.locator('.thumb.flying')).toHaveCount(0);
+});

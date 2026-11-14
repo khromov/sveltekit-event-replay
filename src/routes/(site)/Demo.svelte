@@ -49,6 +49,24 @@ package would (or wouldn't) handle them.
 	/** @type {HTMLElement} */
 	let content;
 
+	/** @type {HTMLElement} */
+	let thumb;
+
+	/** @type {HTMLElement} */
+	let cart;
+
+	/** How many items have landed in the cart icon, which trails `counts.cart` while they fly */
+	let landed = $state(0);
+
+	/** @typedef {{ id: number, left: number, top: number, dx: number, dy: number }} Flight */
+
+	/**
+	 * Copies of the product picture on their way to the cart
+	 * @type {Flight[]}
+	 */
+	let flights = $state([]);
+	let next_flight = 0;
+
 	/** @type {Animation | undefined} */
 	let loading;
 
@@ -131,6 +149,8 @@ package would (or wouldn't) handle them.
 		results[mode] = no_clicks();
 		hydrated = false;
 		counts = { cart: 0, like: 0 };
+		landed = 0;
+		flights = [];
 		gift_wrap = false;
 		clicked = [];
 
@@ -146,7 +166,7 @@ package would (or wouldn't) handle them.
 
 		if (mode === 'with') {
 			for (const target of clicked) {
-				counts[target]++;
+				add(target);
 				results.with.replayed++;
 			}
 		}
@@ -154,10 +174,70 @@ package would (or wouldn't) handle them.
 		clicked = [];
 	}
 
+	/**
+	 * What the mock page's handlers do once they're listening
+	 * @param {Target} target
+	 */
+	function add(target) {
+		counts[target]++;
+		if (target === 'cart') fly();
+	}
+
+	/** Sends a copy of the product picture along an arc into the cart icon */
+	function fly() {
+		if (matchMedia('(prefers-reduced-motion: reduce)').matches) return land();
+
+		const page = content.getBoundingClientRect();
+		const from = thumb.getBoundingClientRect();
+		const to = cart.getBoundingClientRect();
+
+		flights.push({
+			id: next_flight++,
+			left: from.left - page.left,
+			top: from.top - page.top,
+			dx: to.left + to.width / 2 - (from.left + from.width / 2),
+			dy: to.top + to.height / 2 - (from.top + from.height / 2)
+		});
+	}
+
+	/**
+	 * Animates one flying copy of the product picture, and lands it in the cart
+	 * @param {Flight} flight
+	 * @returns {import('svelte/attachments').Attachment<HTMLElement>}
+	 */
+	function travel({ id, dx, dy }) {
+		return (element) => {
+			// a parabola that rises a little above the straight line between the two
+			const keyframes = Array.from({ length: 13 }, (_, i) => {
+				const t = i / 12;
+				const x = dx * t;
+				const y = dy * t - 48 * 4 * t * (1 - t);
+				return {
+					transform: `translate(${x}px, ${y}px) scale(${1 - 0.7 * t})`,
+					opacity: 1 - 0.4 * t
+				};
+			});
+
+			const animation = element.animate(keyframes, { duration: 650, easing: 'ease-in-out' });
+			animation.onfinish = () => {
+				flights = flights.filter((flight) => flight.id !== id);
+				land();
+			};
+
+			// a reload clears `flights`, which removes copies still in the air without landing them
+			return () => animation.cancel();
+		};
+	}
+
+	function land() {
+		landed++;
+		cart.animate({ transform: ['scale(1)', 'scale(1.2)', 'scale(1)'] }, { duration: 300 });
+	}
+
 	/** @param {Target} target */
 	function click(target) {
 		if (hydrated) {
-			counts[target]++;
+			add(target);
 			return;
 		}
 
@@ -256,9 +336,35 @@ package would (or wouldn't) handle them.
 		<!-- kept in the layout while blank, so the demo doesn't change height when it loads -->
 		<div class="page" class:blank={!loaded} inert={!loaded} bind:this={content}>
 			<p class="product">
-				<span class="thumb" aria-hidden="true"></span>
+				<span class="thumb" aria-hidden="true" bind:this={thumb}></span>
 				<span><strong>Wool socks</strong><br />$12</span>
 			</p>
+
+			<!-- the mock shop's cart; "N in cart" next to the button says the same for screen readers -->
+			<span class="cart" aria-hidden="true" bind:this={cart}>
+				<svg viewBox="0 0 24 24" width="26" height="26">
+					<path
+						d="M2.5 3.5h2.4l2.2 10.6a1.6 1.6 0 0 0 1.6 1.3h8.6a1.6 1.6 0 0 0 1.6-1.2L21 7.5H5.6"
+					/>
+					<circle cx="9.5" cy="19.5" r="1.4" />
+					<circle cx="17.5" cy="19.5" r="1.4" />
+				</svg>
+				{#if landed}
+					{#key landed}
+						<b>{landed}</b>
+					{/key}
+				{/if}
+			</span>
+
+			{#each flights as flight (flight.id)}
+				<span
+					class="thumb flying"
+					aria-hidden="true"
+					style:left="{flight.left}px"
+					style:top="{flight.top}px"
+					{@attach travel(flight)}
+				></span>
+			{/each}
 
 			<p class="action">
 				<button
@@ -512,9 +618,63 @@ package would (or wouldn't) handle them.
 	}
 
 	.page {
+		position: relative;
 		display: grid;
 		gap: 0.875rem;
 		padding: 1.25rem;
+	}
+
+	.cart {
+		position: absolute;
+		top: 1.25rem;
+		right: 1.25rem;
+		display: grid;
+		place-items: center;
+		width: 3.25rem;
+		height: 3.25rem;
+		border: 1px solid var(--border);
+		border-radius: 0.875rem;
+		color: var(--text);
+	}
+
+	.cart svg {
+		fill: none;
+		stroke: currentColor;
+		stroke-width: 1.6;
+		stroke-linecap: round;
+		stroke-linejoin: round;
+	}
+
+	.cart b {
+		position: absolute;
+		top: -0.5rem;
+		right: -0.5rem;
+		display: grid;
+		place-items: center;
+		min-width: 1.375rem;
+		height: 1.375rem;
+		padding: 0 0.3rem;
+		border-radius: 999px;
+		background: var(--accent);
+		color: #fff;
+		font-size: 0.75rem;
+		font-variant-numeric: tabular-nums;
+		animation: badge 0.4s ease-out;
+	}
+
+	@keyframes badge {
+		from {
+			transform: scale(1.4);
+		}
+	}
+
+	/* the copy of the product picture that flies into the cart */
+	.thumb.flying {
+		position: absolute;
+		z-index: 1;
+		margin: 0;
+		pointer-events: none;
+		box-shadow: 0 0.5rem 1rem rgb(0 0 0 / 0.2);
 	}
 
 	.page.blank {
@@ -658,7 +818,8 @@ package would (or wouldn't) handle them.
 
 	@media (prefers-reduced-motion: reduce) {
 		.indicator,
-		.action output.pop {
+		.action output.pop,
+		.cart b {
 			animation: none;
 		}
 	}
@@ -678,6 +839,11 @@ package would (or wouldn't) handle them.
 
 		.page {
 			padding: 1rem;
+		}
+
+		.cart {
+			top: 1rem;
+			right: 1rem;
 		}
 	}
 </style>
