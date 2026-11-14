@@ -9,8 +9,9 @@
  * captured. `input` and `change` are safe to add: the browser already updated the value, and
  * replaying them runs your `oninput`/`onchange` handlers.
  * @property {boolean} dedupe
- * Replay at most one click per element. A button clicked three times while the page was loading is
- * replayed once. Other event types are always replayed in full. Defaults to `true`.
+ * Replay at most one click (and one pointer or mouse press) per element. A button clicked three
+ * times while the page was loading is replayed once. Other event types are always replayed in full.
+ * Defaults to `true`.
  * @property {string | false} ignore
  * CSS selector for elements whose events are never captured (matched against the target and its
  * ancestors). Defaults to `'[data-no-replay]'`.
@@ -27,8 +28,10 @@
  * @typedef {object} CapturedEvent
  * @property {Event} event The original event, as the browser dispatched it before hydration
  * @property {Element} key The element the event is attributed to (used for dedupe and `pending`)
- * @property {string | null} text For clicks, the key's text when it was captured, compared before
- * replaying
+ * @property {string | null} text For presses on a button or widget, its text when it was
+ * captured, compared before replaying
+ * @property {string | null} [id] For presses inside a `data-replay-key` element, that key, compared
+ * right before the event is dispatched
  * @property {string} [value] For events on form fields, the field's value when it was captured
  * @property {boolean} [checked] For events on form fields, whether it was checked when captured
  */

@@ -131,10 +131,13 @@
 		const item = { event, key, text: null };
 
 		if (press) {
-			// the text is compared before replaying: if it changed, the element may no longer mean
-			// what the user clicked (a reordered list, "Follow" that turned into "Unfollow"). Not for
-			// <body> and <html>, whose text changes whenever anything on the page does
-			if (key !== document.body && key !== document.documentElement) item.text = key.textContent;
+			// what the press was about, checked before replaying. Hydration may have reused this node
+			// for something else: a reordered list, "Follow" that turned into "Unfollow". With a
+			// `data-replay-key` (say, a product id) that is compared; otherwise the text of a button
+			// or widget is. Other elements' text changes too often to go by (timestamps, counts...)
+			const owner = target.closest('[data-replay-key]');
+			if (owner) item.id = owner.getAttribute('data-replay-key');
+			else if (clickable(key)) item.text = key.textContent;
 		} else if (/^(input|select|textarea)$/.test(target.localName)) {
 			// what the field held at this point, put back before replaying: hydration may reset it to
 			// what the server rendered (a <select> with `value={...}`), and handlers read it

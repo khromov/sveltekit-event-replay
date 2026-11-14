@@ -541,6 +541,105 @@ describe('dispatch', () => {
 		expect(lang.value).toBe('de');
 	});
 
+	test('skips a click whose data-replay-key changed, when every button reads the same', () => {
+		const { document, click, take } = setup(
+			'<ul>' +
+				'<li data-replay-key="tee"><button id="first">Add to cart</button></li>' +
+				'<li data-replay-key="mug"><button id="second">Add to cart</button></li>' +
+				'</ul>'
+		);
+		click('#first');
+		click('#second');
+
+		// hydration reuses the nodes in order for a list sorted differently on the client
+		const [tee, mug] = document.querySelectorAll('li');
+		tee.setAttribute('data-replay-key', 'hoodie');
+
+		/** @type {string[]} */
+		const added = [];
+		for (const li of [tee, mug]) {
+			li.querySelector('button')?.addEventListener('click', () => {
+				added.push(/** @type {string} */ (li.getAttribute('data-replay-key')));
+			});
+		}
+
+		expect(dispatch(take())).toHaveLength(1);
+		expect(added).toEqual(['mug']);
+	});
+
+	test('checks data-replay-key again after each replayed event', () => {
+		const { window, document, click, take } = setup(
+			'<input id="search"><button id="add" data-replay-key="tee">Add to cart</button>',
+			{ events: ['click', 'input'] }
+		);
+		const search = /** @type {HTMLInputElement} */ (document.querySelector('#search'));
+		const add = /** @type {HTMLButtonElement} */ (document.querySelector('#add'));
+
+		// the user clicks "Add to cart" on the tee, then types a search
+		click('#add');
+		search.value = 'mug';
+		search.dispatchEvent(new window.InputEvent('input', { bubbles: true }));
+
+		// ...in the other order: they type first, and the list hasn't filtered yet when they click
+		const {
+			window: w2,
+			document: d2,
+			click: click2,
+			take: take2
+		} = setup('<input id="search"><button id="add" data-replay-key="tee">Add to cart</button>', {
+			events: ['click', 'input']
+		});
+		const search2 = /** @type {HTMLInputElement} */ (d2.querySelector('#search'));
+		const add2 = /** @type {HTMLButtonElement} */ (d2.querySelector('#add'));
+		search2.value = 'mug';
+		search2.dispatchEvent(new w2.InputEvent('input', { bubbles: true }));
+		click2('#add');
+
+		// once hydrated, filtering reuses the button for the mug
+		/** @type {string[]} */
+		const added = [];
+		for (const [input, button] of [
+			[search, add],
+			[search2, add2]
+		]) {
+			input.addEventListener('input', () => button.setAttribute('data-replay-key', 'mug'));
+			button.addEventListener('click', () =>
+				added.push(button.getAttribute('data-replay-key') ?? '')
+			);
+		}
+
+		dispatch(take()); // the click on the tee comes first, so it adds the tee
+		dispatch(take2()); // the search comes first and rearranges the list: the click is skipped
+		expect(added).toEqual(['tee']);
+	});
+
+	test('goes by data-replay-key rather than text, when there is one', () => {
+		const { document, click, take } = setup(
+			'<button id="add" data-replay-key="hoodie">Add to cart · $59.00</button>'
+		);
+		click('#add');
+
+		// formatted for the visitor's locale once the page hydrates
+		const add = /** @type {HTMLElement} */ (document.querySelector('#add'));
+		add.textContent = 'Add to cart · 59,00 $';
+
+		let count = 0;
+		add.addEventListener('click', () => count++);
+		dispatch(take());
+		expect(count).toBe(1);
+	});
+
+	test('replays a click on content whose text changed, like a timestamp next to it', () => {
+		const { document, click, take } = setup('<main id="main"><p id="time">12:00:00</p></main>');
+		click('#main');
+		/** @type {HTMLElement} */ (document.querySelector('#time')).textContent = '12:00:03';
+
+		let count = 0;
+		document.querySelector('#main')?.addEventListener('click', () => count++);
+		dispatch(take());
+		expect(count).toBe(1);
+	});
+
 	test('skips elements whose text changed during hydration', () => {
 		const { document, click, take } = setup(
 			'<ul><li><button id="first">one</button></li><li><button id="second">two</button></li></ul>'

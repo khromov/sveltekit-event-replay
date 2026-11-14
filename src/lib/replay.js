@@ -57,20 +57,26 @@ export function dispatch(taken) {
 	// Compare texts before replaying anything — replayed handlers may change them on purpose
 	// (a button showing a count). A click whose element's text changed in the meantime may no
 	// longer mean what the user clicked: a reordered list, or "Follow" that turned into "Unfollow"
-	const changed = taken.captured.map(({ key, text }) => text !== null && key.textContent !== text);
+	const changed = taken.captured.map(({ key, text }) => text != null && key.textContent !== text);
 
 	// Elements whose replayed Enter or Space keydown the app cancelled, the way a widget that handles
 	// its own keys does. Before hydration nothing cancelled it, so the browser also turned the key
 	// into a click, which a hydrated page wouldn't have seen
 	const handled = new Set();
 
-	for (const [index, { event, key, value, checked }] of taken.captured.entries()) {
+	for (const [index, { event, key, id, value, checked }] of taken.captured.entries()) {
 		if (taken.pending) key.removeAttribute(taken.pending);
 
 		const target = /** @type {HTMLInputElement} */ (event.target);
 
 		// Skip events whose element hydration replaced (e.g. after a mismatch), changed, or disabled
 		if (!target.isConnected || changed[index] || target.closest(':disabled')) continue;
+
+		// ...or whose `data-replay-key` changed, checked right before dispatching: an earlier replayed
+		// event (a search, a removed row) can rearrange a list too
+		if (id != null && target.closest('[data-replay-key]')?.getAttribute('data-replay-key') !== id) {
+			continue;
+		}
 
 		// a click made from a key press (detail 0) after a replayed key press the app handled
 		if (event.type === 'click' && /** @type {MouseEvent} */ (event).detail === 0) {

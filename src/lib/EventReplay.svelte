@@ -32,10 +32,11 @@ replays them once it has. Render it once, in your root `+layout.svelte`:
 	 * labels, `<summary>`, popover/command buttons and form submit buttons are never captured for
 	 * `click`, since the browser already handled those, and `submit`/`reset` are never captured. Add
 	 * `'input'` / `'change'` to also run `oninput` / `onchange` handlers for fields that were edited
-	 * before hydration.
+	 * before hydration, and `'pointerdown'` for UI libraries whose menus open on pointer down.
 	 * @property {boolean} [dedupe]
-	 * Replay at most one click per element, so impatient repeated clicks on e.g. a "Buy" button run
-	 * its handler once. Other event types are always replayed in full. Defaults to `true`.
+	 * Replay at most one click (and one pointer or mouse press) per element, so impatient repeated
+	 * clicks on e.g. a "Buy" button run its handler once. Other event types are always replayed in
+	 * full. Defaults to `true`.
 	 * @property {string | false} [ignore]
 	 * CSS selector for elements (and their descendants) that should never be captured. Defaults to
 	 * `'[data-no-replay]'`.
@@ -71,6 +72,11 @@ replays them once it has. Render it once, in your root `+layout.svelte`:
 
 		return `<script data-config="${config}">${SCRIPT}</` + 'script>';
 	});
+
+	// Hold new events back from the app as soon as it starts hydrating. With `experimental.async`,
+	// handlers can already be listening while the page awaits something before mounting, and a
+	// click made then would otherwise run now and again when it's replayed
+	if (typeof window !== 'undefined' && !mounted) window.__sveltekit_event_replay?.hold?.();
 
 	// onMount rather than afterNavigate: with `experimental.async`, a page that awaits during
 	// hydration can mount after SvelteKit has already fired its 'enter' navigation callbacks.
