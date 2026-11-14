@@ -21,7 +21,8 @@
  * `'data-replay-pending'`.
  * @property {number} timeout
  * Milliseconds after which, if the app still hasn't hydrated, captured events are dropped and
- * capturing stops. `0` waits forever. Defaults to `10000`.
+ * capturing stops. Counted from when the page loads, and again from when hydration starts.
+ * `0` waits forever. Defaults to `10000`.
  */
 
 /**

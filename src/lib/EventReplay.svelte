@@ -46,7 +46,8 @@ replays them once it has. Render it once, in your root `+layout.svelte`:
 	 * otherwise have: it is removed when the event is replayed.
 	 * @property {number} [timeout]
 	 * Milliseconds to wait for hydration before dropping captured events and clearing `pending`
-	 * markers. `0` waits forever. Defaults to `10000`.
+	 * markers, counted from when the page loads and again from when hydration starts. `0` waits
+	 * forever. Defaults to `10000`.
 	 * @property {(events: Event[]) => void} [onreplay]
 	 * Called once after hydration with the events that were replayed (an empty array if there were
 	 * none).

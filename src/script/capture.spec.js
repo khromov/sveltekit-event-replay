@@ -297,6 +297,60 @@ describe('capture', () => {
 		expect(stop()).toHaveLength(1);
 	});
 
+	test('counts the timeout again from when hydration starts', async () => {
+		const { window, click, stop } = setup('<button id="a">a</button>', { timeout: 60 });
+		await sleep(40);
+
+		// hydration starts, and (with experimental.async) awaits data for a while
+		window.__sveltekit_event_replay?.hold();
+		await sleep(40);
+		click('#a');
+		expect(stop()).toHaveLength(1);
+	});
+
+	test('still gives up if hydration never finishes', async () => {
+		const { window, click, stop } = setup('<button id="a">a</button>', { timeout: 30 });
+		window.__sveltekit_event_replay?.hold();
+		await sleep(60);
+		click('#a');
+		expect(stop()).toEqual([]);
+	});
+
+	test('a form submitted while the page hydrates sends what was typed', () => {
+		const { window, document } = setup(
+			'<form id="f"><input id="title" name="title"><input id="agree" type="checkbox" name="agree"></form>' +
+				'<input id="other">',
+			{ events: ['click', 'input', 'change'] }
+		);
+		const title = /** @type {HTMLInputElement} */ (document.querySelector('#title'));
+		const agree = /** @type {HTMLInputElement} */ (document.querySelector('#agree'));
+		const other = /** @type {HTMLInputElement} */ (document.querySelector('#other'));
+
+		title.value = 'hello';
+		title.dispatchEvent(new window.InputEvent('input', { bubbles: true }));
+		agree.checked = true;
+		agree.dispatchEvent(new window.Event('change', { bubbles: true }));
+		other.value = 'elsewhere';
+		other.dispatchEvent(new window.InputEvent('input', { bubbles: true }));
+
+		// hydration renders what the server did
+		title.value = '';
+		agree.checked = false;
+		other.value = '';
+
+		/** @type {unknown[]} */
+		let sent = [];
+		const form = /** @type {HTMLFormElement} */ (document.querySelector('#f'));
+		form.addEventListener('submit', (event) => {
+			event.preventDefault();
+			sent = [title.value, agree.checked, other.value];
+		});
+		form.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+
+		// the form's own fields are put back; a field outside it is left for the replay
+		expect(sent).toEqual(['hello', true, '']);
+	});
+
 	test('falls back to the default ignore selector when it is invalid', () => {
 		const { click, stop, errors } = setup(
 			'<button id="a">a</button><button id="b" data-no-replay>b</button>',

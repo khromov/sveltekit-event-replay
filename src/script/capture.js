@@ -94,9 +94,24 @@
 	/** @type {import('../lib/types.js').CapturedEvent[]} */
 	let queue = [];
 
-	// Set once the app has hydrated: from then until the replay, captured events are held back
+	// Set once the app starts hydrating: from then until the replay, captured events are held back
 	// from the app, so that they can't overtake the ones captured before them
 	let held = false;
+
+	/**
+	 * A form submitted natively while the page hydrates (with `experimental.async` that can take a
+	 * while) sends what the user typed, even if hydration has reset its fields to what the server
+	 * rendered: the captured values go back in before the browser reads them.
+	 * @param {Event} event
+	 */
+	const submit = (event) => {
+		for (const { event: captured, value, checked } of queue) {
+			const field = /** @type {HTMLInputElement} */ (captured.target);
+			if (field.form !== event.target) continue;
+			if (value !== undefined && field.value !== value) field.value = value;
+			if (checked !== undefined && field.checked !== checked) field.checked = checked;
+		}
+	};
 
 	/** @param {Event} event */
 	const capture = (event) => {
@@ -166,32 +181,44 @@
 	const stop = () => {
 		clearTimeout(timer);
 		for (const type of events) removeEventListener(type, capture, true);
+		removeEventListener('submit', submit, true);
 		const captured = queue;
 		queue = [];
 		return captured;
 	};
 
 	for (const type of events) addEventListener(type, capture, true);
+	addEventListener('submit', submit, true);
 
-	// If hydration never happens (`csr = false`, a failed chunk, a very slow network),
-	// stop buffering and clear the pending markers so the page doesn't look stuck.
+	// If hydration never happens (`csr = false`, a failed chunk, a very slow network), or never
+	// finishes, stop buffering and clear the pending markers so the page doesn't look stuck.
 	// `0`, negative numbers and non-numbers (`Infinity` arrives as `null`) wait forever
-	const timer =
-		timeout > 0
-			? setTimeout(
-					() => {
-						const captured = stop();
-						if (pending) for (const { key } of captured) key.removeAttribute(pending);
-					},
-					Math.min(timeout, 2 ** 31 - 1) // larger delays overflow and fire immediately
-				)
-			: undefined;
+	/** @type {ReturnType<typeof setTimeout> | undefined} */
+	let timer;
+
+	const wait = () => {
+		clearTimeout(timer);
+		if (timeout > 0) {
+			timer = setTimeout(
+				() => {
+					const captured = stop();
+					if (pending) for (const { key } of captured) key.removeAttribute(pending);
+				},
+				Math.min(timeout, 2 ** 31 - 1) // larger delays overflow and fire immediately
+			);
+		}
+	};
+
+	wait();
 
 	/** @type {import('../lib/types.js').CaptureApi} */
 	window.__sveltekit_event_replay = {
 		stop,
 		hold: () => {
 			held = true;
+			// counted again from when hydration starts, which (with `experimental.async`) can await
+			// data for a while before the replay
+			wait();
 		},
 		pending
 	};
