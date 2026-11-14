@@ -1,5 +1,7 @@
 # sveltekit-event-replay
 
+![The demo on the website: clicks made while a page loads are replayed With EventReplay, and lost in Standard SvelteKit](https://raw.githubusercontent.com/khromov/sveltekit-event-replay/main/.github/demo.gif)
+
 SvelteKit renders your pages on the server, so they show up before the JavaScript that makes them interactive has loaded. A click on a `<button onclick={...}>` in that window does nothing, and the user has to click again.
 
 `sveltekit-event-replay` adds a tiny inline script (~1 kB gzipped) to `<head>` that remembers those clicks, and replays them once SvelteKit has hydrated the page.
@@ -189,6 +191,7 @@ npm test           # unit tests (vitest + jsdom) and e2e tests (Playwright: Chro
 npm run lint
 npm run check
 npm run og         # rebuilds static/og.png, the website's link preview image, from a screenshot
+npm run gif        # re-records .github/demo.gif, the demo at the top of this README, from the website
 ```
 
 The inline script's source is [`src/script/capture.js`](src/script/capture.js). `npm run generate` minifies it into `src/lib/generated/script.js` and computes its CSP hash; a unit test fails if the generated file is out of date. The e2e tests hold back SvelteKit's client JavaScript to simulate a slow network and click around before the page hydrates. Their pages live in `src/routes/(fixtures)`, next to the [website](https://khromov.github.io/sveltekit-event-replay/) in `src/routes/(site)`. Both are prerendered with a strict CSP, so the tests also verify `SCRIPT_HASH`.
