@@ -1,0 +1,16 @@
+{
+	"extends": "$app/tsconfig",
+	"compilerOptions": {
+		"strict": true,
+		"types": ["$app/types", "node"]
+	},
+	"include": [
+		"src",
+		"scripts",
+		"e2e",
+		"vite.config.js",
+		"prettier.config.js",
+		"eslint.config.js",
+		"playwright.config.js"
+	]
+}
