@@ -18,7 +18,7 @@ export const usage = {
 {@render children()}`
 };
 
-export const csp = `import { SCRIPT_HASH } from 'sveltekit-event-replay';
+export const csp = `import { SCRIPT_HASH } from 'sveltekit-event-replay/script';
 
 sveltekit({
 	csp: {

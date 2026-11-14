@@ -29,7 +29,7 @@
 		<h1>Replay clicks made before hydration</h1>
 
 		<p class="lead">
-			SvelteKit shows server-rendered HTML before its JavaScript loads. This inline script, 660 B
+			SvelteKit shows server-rendered HTML before its JavaScript loads. This inline script, 860 B
 			gzipped, captures clicks made in that gap and replays them once the page hydrates.
 		</p>
 
@@ -63,8 +63,8 @@
 		<h2>Usage</h2>
 
 		<p>
-			Render <code>&lt;EventReplay /&gt;</code> once in your root layout. It runs on SvelteKit 3 with
-			Svelte 5.
+			Render <code>&lt;EventReplay /&gt;</code> once in your root layout. It runs on SvelteKit 2 and 3
+			with Svelte 5.
 		</p>
 
 		<pre><code>{usage.before}<mark>{usage.line}</mark>{usage.after}</code></pre>
@@ -75,9 +75,7 @@
 
 		<ul>
 			<li>Repeated clicks on one element replay once.</li>
-			<li>
-				Links, form controls, labels, <code>&lt;summary&gt;</code> and submit buttons stay with the browser.
-			</li>
+			<li>Links, form controls, labels, popovers and submit buttons stay with the browser.</li>
 			<li><code>data-no-replay</code> skips an element and everything inside it.</li>
 			<li>
 				Elements waiting for a replay carry <code>data-replay-pending</code>, so you can style them.
@@ -112,7 +110,7 @@
 				<tr>
 					<th scope="row"><code>dedupe</code></th>
 					<td><code>true</code></td>
-					<td>Replay at most one event per element and event type.</td>
+					<td>Replay at most one click per element.</td>
 				</tr>
 				<tr>
 					<th scope="row"><code>ignore</code></th>
