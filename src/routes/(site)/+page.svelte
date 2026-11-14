@@ -96,8 +96,7 @@
 		<h2>Usage</h2>
 
 		<p>
-			Render <code>&lt;EventReplay /&gt;</code> once in your root layout. It runs on SvelteKit 2 and 3
-			with Svelte 5.
+			Add <code>&lt;EventReplay /&gt;</code> once in your root <code>+layout.svelte</code>.
 		</p>
 
 		<pre><code>{usage.before}<mark>{usage.line}</mark>{usage.after}</code></pre>
